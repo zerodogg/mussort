@@ -703,14 +703,15 @@ names.
 
 =item B<--silentskip>
 
-Makes mussort not output a message about files that it skips (meaning files
-that isn't tagged properly).
+Makes mussort not output messages about files that it skips (those that are skipped
+are generally badly tagged, or not tagged at all).
 
 =back
 
 =head1 DEPENDENCIES
 
-It needs id3info from id3lib and ogginfo from vorbis-tools to get file information.
+It needs id3info from id3lib and either the perl module Audio::File (fastest) or
+ogginfo from vorbis-tools (slower) to get file information.
 
 =head1 BUGS AND LIMITATIONS
 
