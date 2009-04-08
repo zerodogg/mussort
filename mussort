@@ -340,8 +340,7 @@ sub CleanTag {
 # Usage: my $NewFileName = GetNewFileName(InfoHash);
 sub GetNewFileName {
 	my $Info = shift;
-	if (not defined $Info->{Title} or not defined $Info->{Band} or
-		$Info->{Title} eq 'Unknown' or $Info->{Band} eq 'Unknown')
+	if (IsInvalidTagValue($Info->{Title}) or IsInvalidTagValue($Info->{Band}))
 	{
 		return(undef);
 	}
@@ -362,13 +361,28 @@ sub GetNewFileName {
 	return($NewName);
 }
 
+# Purpose: Check that the tag supplied is valid
+# Usage: bool = IsInvalidTagValue(VALUE);
+# Returns false if it is valid, true if it isn't.
+sub IsInvalidTagValue
+{
+	my $value = shift;
+	if(not defined $value
+			or not length $value
+			or $value eq 'Unknown')
+	{
+		return true;
+	}
+	return false;
+}
+
 # Purpose: Get the new directory path for the file
 # Usage: my $NewDirName = GetNewDirName(InfoHash);
 sub GetNewDirName {
 	my $Info = shift;
 	my $BaseDir = shift;
 	
-	if($Info->{Band} eq 'Unknown' or not defined $Info->{Band} or not length $Info->{Band})
+	if(IsInvalidTagValue($Info->{Band}))
 	{
 		return(undef);
 	}
@@ -586,6 +600,7 @@ sub InPath {
 	foreach (split /:/, $ENV{PATH}) { if (-x "$_/@_" and not -d "$_/@_" ) {	return 1; } } return 0;
 }
 
+# Purpose: Main application
 sub main
 {
 	if(eval('use Audio::File;1;'))
