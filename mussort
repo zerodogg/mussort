@@ -1,0 +1,667 @@
+#!/usr/bin/perl
+# mussort
+# Copyright (C) Eskild Hustvedt 2007, 2008, 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+use strict;
+use warnings;
+use File::Find;
+use File::Basename qw(dirname basename);
+use File::Path qw(mkpath rmtree);
+use File::Copy;
+use Getopt::Long;
+use IPC::Open2;
+use Cwd qw(realpath);
+use constant { true => 1, false => 0 };
+
+our $VERSION = 0.1;
+my $NeverRemove;
+my $RemoveLargest = 1;
+my $AllowSpecialChars;
+my $DirInsensitive;
+my $SilentSkip;
+my $AddInfoString;
+my %DirPreferance;
+
+# This makes sure the children are slayed properly
+$SIG{CHLD} = sub {
+	my $PID = wait;
+       	return(1)
+};
+
+# Purpose: Check for a dependency
+# Usage: CheckDep(COMMAND);
+sub CheckDep
+{
+	my $cmd = shift;
+	if(not InPath($cmd))
+	{
+		# Multi-dimensional hash mapping distro -> command -> package
+		my %DepToPackage = (
+			'/etc/apt/apt.conf.d/01ubuntu' => {
+				id3info => 'libid3-dev',
+				ogginfo => 'vorbis-tools',
+			},
+			'/etc/debian_version' => {
+				ogginfo => 'vorbis-tools',
+				id3info => 'libid3-dev',
+			}
+		);
+		foreach my $path (keys(%DepToPackage))
+		{
+			if (-e $path)
+			{
+				if ($DepToPackage{$path}{$cmd})
+				{
+					FatalError("The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.");
+				}
+			}
+		}
+		FatalError("The command '$cmd' is missing. Please install it, then re-run mussort.");
+	}
+	return true;
+}
+
+# Purpose: Output a rename message
+# Usage: OutputRename(MESSAGE);
+sub OutputRename {
+	print "Rename: $_[0]\n";
+}
+
+# Purpose: Output a removal message
+# Usage: OutputRemove(MESSAGE);
+sub OutputRemove {
+	print "Removed: $_[0]\n";
+}
+
+# Purpose: Output an error message
+# Usage: Error(MESSAGE);
+sub Error {
+	warn "Error: $_[0]\n";
+}
+
+# Purpose: Output a fatal error message (causes die())
+# Usage: FatalError(MESSAGE);
+sub FatalError {
+	die "Error: $_[0]\n";
+}
+
+# Purpose: Check if a directory is empty
+# Usage: DirIsEmpty(PATH);
+#  Returns 1 if it is empty, 0 if it isn't.
+sub DirIsEmpty {
+	if(not($_[0])) { return(0) }
+	opendir(TESTDIR, $_[0]);
+	my @TestDir = readdir(TESTDIR);
+	closedir(TESTDIR);
+	if(not scalar @TestDir > 2) {
+		return 1;
+	}
+	return 0;
+}
+
+# Purpose: Get information about an ogg vorbis file using ogginfo
+# Usage: my $Info = GetOggVorbisInfo(FILE);
+sub GetOggVorbisInfo {
+	my $InfoFile = shift;
+	$InfoFile = realpath($InfoFile);
+	my %Information = (
+		TITLE => 'Unknown',
+		ARTIST => 'Unknown',
+		ALBUM => 'Unknown',
+		TRACKNUMBER => 'Unknown',
+	);
+	local *STDERR;
+	open(STDERR,'>','/dev/null');
+	my $PID = open2(my $Child_OUT, my $Child_IN, 'ogginfo', $InfoFile) or FatalError("Unable to open2(): $!\n");
+	while(<$Child_OUT>) {
+		next if not m/=/;
+		chomp;
+		s/^\s+//g;
+		my $Opt = $_;
+		my $Val = $_;
+		$Opt =~ s/^\s*(.*)\s*=.*/$1/;
+		$Opt =~ tr[a-z][A-Z];
+		$Val =~ s/^.*=\s*(.*)\s*/$1/;
+		if($Val =~ /\S/) {
+			$Information{$Opt} = $Val;
+		}
+	}
+	close($Child_OUT);
+	close($Child_IN);
+	$Information{TRACKNUMBER} =~ s#/.*##;
+	return(\%Information);
+}
+
+# Purpose: Get information about an mp3 file using id3info
+# Usage: my $Info = GetMP3Info(FILE);
+sub GetMP3Info {
+	my $InfoFile = shift;
+	my %Information = (
+		TIT2 => 'Unknown',
+		TPE1 => 'Unknown',
+		TALB => 'Unknown',
+		TRCK => 'Unknown',
+	);
+	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3info', $InfoFile) or FatalError("Unable to open2(): $!");
+	while(<$Child_OUT>) {
+		next if not /^==/;
+		chomp;
+		my $Opt = $_;
+		my $Val = $_;
+		$Opt =~ s/^===\s(\w+)\s.*/$1/g;
+		$Val =~ s/^.+\):\s(.+)$/$1/g;
+		if($Val =~ /\S/) {
+			$Information{$Opt} = $Val;
+		}
+	}
+	close($Child_OUT);
+	close($Child_IN);
+	$Information{TRCK} =~ s#/.*##;
+	return(\%Information);
+}
+
+# Purpose: Retag an OGG file
+# Usage: ReTag_ogg(tag,file)
+sub ReTag_ogg
+{
+	my $tag = shift;
+	my $file = shift;
+	# It's not a dep, just used if available
+	if(not InPath('vorbiscomment'))
+	{
+		return(undef);
+	}
+	return system('vorbiscomment','-a',$file,'-t',$tag);
+}
+
+# Purpose: Retag an MP3 file
+# Usage: ReTag_mp3(tag,file)
+sub ReTag_mp3
+{
+	my $tag = shift;
+	my $file = shift;
+	# It's not a dep, just used if available
+	if(not InPath('id3tag'))
+	{
+		return(undef);
+	}
+	return system('id3tag',$tag,$file);
+}
+
+# Purpose: Get information about a file
+# Usage: $FileInfo = GetInfo(pathtofile);
+sub GetInfo
+{
+	$AddInfoString = undef;
+	my $File = shift;
+	my %FileInfo;
+	if($File =~ /mp3$/i)
+	{
+		my $Info = GetMP3Info($File);
+		$FileInfo{Title} = CleanTag($Info->{TIT2});
+		$FileInfo{Band} = CleanTag($Info->{TPE1});
+		$FileInfo{Album} = CleanTag($Info->{TALB});
+		$FileInfo{Track} = CleanTag($Info->{TRCK});
+		$FileInfo{Ext} = 'mp3';
+	}
+	elsif ($File =~ /ogg$/i)
+	{
+		my $Info = GetOggVorbisInfo($File);
+		$FileInfo{Title} = CleanTag($Info->{TITLE});
+		$FileInfo{Band} = CleanTag($Info->{ARTIST});
+		$FileInfo{Album} = CleanTag($Info->{ALBUM});
+		$FileInfo{Track} = CleanTag($Info->{TRACKNUMBER});
+		$FileInfo{Ext} = 'ogg';
+	}
+	else
+	{
+		FatalError("Unknown filetype: $File\n");
+	}
+	# If we couldn't extract a track then try to extract it from the filename instead
+	if(not $FileInfo{Track} =~ /^\d+$/)
+	{
+		my $Track = basename($File);
+		if ($Track =~ s/^(\d+).*$/$1/)
+		{
+			$FileInfo{Track} = $Track;
+			my $r;
+			# Retag
+			if ($FileInfo{Ext} eq 'ogg')
+			{
+				$r = ReTag_ogg("tracknumber=$Track",$File);
+			}
+			elsif($FileInfo{Ext} eq 'mp3')
+			{
+				$r = ReTag_mp3("-t$Track",$File);
+			}
+			# Additional info
+			if(defined($r))
+			{
+				$AddInfoString = "Added track tag to ";
+			}
+		}
+	}
+	return(\%FileInfo);
+}
+
+# Purpose: Strip stuff we don't want in file/dir names
+# Usage: my $NewVar = CleanTag(OldVar);
+sub CleanTag {
+	my $Name = shift;
+	# Make & into and
+	$Name =~ s/\&/and/;
+	# Don't allow whitespace
+	$Name =~ s/\s+/_/g;
+	# Remove these characters - if present
+	$Name =~ s/~//g;
+	$Name =~ s/('|"|\(|\))+//g;
+	$Name =~ s#/##g;
+	$Name =~ s/\?//g;
+	$Name =~ s/#//g;
+	# Ensure we don't have two identical _ or - following each other. That's ugly.
+	$Name =~ s/_+/_/g;
+	$Name =~ s/-+/-/g;
+	# Don't begin a file with .
+	$Name =~ s/^\.+//;
+	# Don't end a file with _ or -
+	$Name =~ s/(_|-)+$//;
+	# If we have more than 3 . after each other, force only three
+	$Name =~ s/\.\.\.\.+/.../g;
+	# Clean up non-ascii characters
+	if(not $AllowSpecialChars) {
+		# These usually doesn't work, but having them here doesn't hurt
+		$Name =~ s/æ/ae/gi;
+		$Name =~ s/ø/oe/gi;
+		$Name =~ s/å/aa/gi;
+		# Now remove everything that doesn't match this regex
+		$Name =~ s/[^\w\s\.,-_]//g;
+	}
+	# Don't let it start with a dot
+	$Name =~ s/^\.+//;
+	# Don't allow _-_ - just use one -
+	$Name =~ s/_-_/-/;
+	# Finally, return the cleaned filename
+	return($Name);
+}
+
+# Purpose: Get the new filename for the file
+# Usage: my $NewFileName = GetNewFileName(InfoHash);
+sub GetNewFileName {
+	my $Info = shift;
+	if ($Info->{Title} eq 'Unknown' or $Info->{Band} eq 'Unknown') {
+		return(undef);
+	}
+	my $NewName = "$Info->{Band}-$Info->{Title}.$Info->{Ext}";
+	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/) {
+		if(not $Info->{Track} =~ /\d\d/) {
+			$Info->{Track} = "0$Info->{Track}";
+		}
+		# Disallow 00/0
+		if($Info->{Track} > 0 ) {
+			$NewName = "$Info->{Track}-$NewName";
+		}
+	}
+
+	return($NewName);
+}
+
+# Purpose: Get the new directory path for the file
+# Usage: my $NewDirName = GetNewDirName(InfoHash);
+sub GetNewDirName {
+	my $Info = shift;
+	my $BaseDir = shift;
+	
+	if($Info->{Band} eq 'Unknown') {
+		return(undef);
+	}
+	
+	my $FirstDir = $Info->{Band};
+	my $SecondDir = $Info->{Album};
+	
+	# Get lowercased and fixed name
+	my $lowerFirst = lc($FirstDir);
+	$lowerFirst =~ s/[\.\,\&]//g;
+	my $lowerSecond = lc($SecondDir);
+	$lowerSecond =~ s/[\.\,\&]//g;
+	if($DirInsensitive) {
+		if($DirPreferance{$lowerFirst}) {
+			$FirstDir = $DirPreferance{$lowerFirst};
+			if($DirPreferance{$lowerSecond}) {
+				$SecondDir = $DirPreferance{$lowerSecond};
+			}
+		} else {
+			opendir(my $FirstDirHandle,$BaseDir);
+			foreach(sort(readdir($FirstDirHandle))) {
+				next if not -d $_;
+				if(/^\Q$FirstDir\E/i) {
+					$FirstDir = $_;
+					last;
+				} else {
+					my $TestDir = $FirstDir;
+					$TestDir =~ s/(-|_)+//g;
+					my $TestThis = $_;
+					$TestThis =~ s/(-|_)+//g;
+					if($TestThis =~ /^\Q$TestDir\E$/i) {
+						$FirstDir = $_;
+						last;
+					}
+				}
+			}
+			close($FirstDirHandle);
+			if(-d $BaseDir . '/' . $FirstDir) {
+				opendir(my $SecondDirHandle,"$BaseDir/$FirstDir");
+				foreach(sort(readdir($SecondDirHandle))) {
+					next if not -d $_;
+					if(/^\Q$SecondDir\E$/i) {
+						$SecondDir = $_;
+						last;
+					} else {
+						my $TestDir = $SecondDir;
+						$TestDir =~ s/(-|_)+//g;
+						my $TestThis = $_;
+						$TestThis =~ s/(-|_)+//g;
+						if($TestThis =~ /^\Q$TestDir\E$/i) {
+							$SecondDir = $_;
+							last;
+						}
+					}
+				}
+				close($SecondDirHandle);
+			}
+			$DirPreferance{$lowerFirst} = $FirstDir;
+			$DirPreferance{$lowerSecond} = $SecondDir;
+		}
+	}
+
+	if(not $SecondDir eq 'Unknown') {
+		return("$BaseDir/$FirstDir/$SecondDir/");
+	} else {
+		return("$BaseDir/$FirstDir/");
+	}
+}
+
+# Purpose: Do the actual renaming
+# Usage: RenameFile(Original name, New Name, BaseDir);
+sub RenameFile {
+	my $OrigFile = shift;
+	my $NewFile = shift;
+	my $BaseDir = shift;
+	
+	# Get some prettier names to display
+	my $OutputOldName = $OrigFile;
+	my $OutputNewName = $NewFile;
+	$OutputOldName =~ s/^\Q$BaseDir\E\/*//;
+	$OutputOldName =~ s#/+#/#g;
+	$OutputNewName =~ s/^\Q$BaseDir\E\/*//;
+	$OutputNewName =~ s#/+#/#g;
+	my $Directory = dirname($NewFile);
+
+	if($OutputOldName eq $OutputNewName) {
+		return();
+	}
+	# If it exists and isn't a directory then just return
+	if(-e $Directory and not -d $Directory) {
+		return();
+	}
+	# If the length of the filename is less than 7 just return
+	if(length(basename($NewFile)) < 7) {
+		return();
+	}
+	# Create the dir
+	eval { mkpath(dirname($NewFile)) };
+	if($@) {
+		FatalError('Failed to mkpath ' . dirname($NewFile) . ": $@\nWas processing $OrigFile");
+	}
+	# Check if the file already exists
+	if(-e $NewFile) {
+		# Check which file is the largest
+		if(-s $NewFile > -s $OrigFile) {
+			return if not $RemoveLargest;
+			return if $NeverRemove;
+			print "Remove: $OrigFile\n";
+			unlink($OrigFile);
+			return();
+		}
+	}
+	# Output info and do the actual renaming
+	OutputRename "$OutputOldName -> $OutputNewName";
+	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
+	if ($AddInfoString)
+	{
+		print " ".$AddInfoString.$OutputNewName."\n";
+	}
+}
+
+# Purpose: Remove the supplied directory and up to two directories below it in the tree.
+# Usage: RemoveIfEmpty(DIR);
+sub RemoveIfEmpty {
+	return if $NeverRemove;
+	my $Dir = shift;
+	my $SecondDir = dirname($Dir);
+	my $ThirdDir = dirname($SecondDir);
+	my $Removed;
+	foreach($Dir,$SecondDir,$ThirdDir) {
+		if(not -d $_ or not DirIsEmpty($_)) {
+			last;
+		}
+		rmdir($_) or Error "Unable to remove $Dir: $!";
+		$Removed = $_;
+	}
+	if($Removed) {
+		OutputRemove $Removed;
+	}
+}
+
+# Purpose: Process a file
+# Usage: ProcessFile(FILE);
+sub ProcessFile {
+	my $File = shift;
+	my $BaseDir = shift;
+	return if -d $File;
+	return if not $File =~ /\.(ogg|mp3)$/gi;
+	# Get info
+	my $FileInfo = GetInfo($File);
+	# Build a new filename for the music file
+	my $NewName = GetNewFileName($FileInfo);
+	my $NewDir = GetNewDirName($FileInfo,$BaseDir);
+	if(not defined($NewName)) {
+		if(not $SilentSkip) {
+			print "Skipped: $File\n";
+		}
+		return();
+	}
+	my $DirInfo = dirname($File);
+	$DirInfo =~ s/^\Q$BaseDir\E//;
+	$NewDir = $NewDir ? $NewDir : dirname($File);
+	RenameFile($File,"$NewDir/$NewName",$BaseDir);
+	RemoveIfEmpty(dirname($File));
+}
+
+# Purpose: Sort files
+# Usage: sort sortFiles @_
+sub sortFiles
+{
+	if (-d $a and not -d $b)
+	{
+		return 1;
+	}
+	elsif(-d $b and not -d $a)
+	{
+		return -1;
+	}
+	return $a cmp $b;
+}
+
+# Purpose: Traverse a tree
+# Usage: ProcessTree(DIR);
+sub ProcessTree {
+	my $Dir = shift;
+	$Dir = realpath($Dir);
+	print "Processing: $Dir\n";
+	find({
+			wanted => sub { ProcessFile($File::Find::name,$Dir); },
+			preprocess => sub { return sort sortFiles	@_ },
+		},
+		$Dir
+	);
+	return(1);
+}
+
+# Purpose: Print formatted --help output
+# Usage: PrintHelp("-shortoption", "--longoption", "description");
+sub PrintHelp {
+	printf "%-4s %-16s %s\n", "$_[0]", "$_[1]", "$_[2]";
+}
+
+# Purpose: Check for a file in path
+# Usage: InPath(FILE)
+sub InPath {
+	foreach (split /:/, $ENV{PATH}) { if (-x "$_/@_" and not -d "$_/@_" ) {	return 1; } } return 0;
+}
+
+GetOptions (
+	'help|h' => sub {
+		print "mussort version $VERSION\n\n";
+		print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
+		PrintHelp('-h','--help','Display this help screen');
+		PrintHelp('','--version','Display version information');
+		PrintHelp('-l','--largest','When hitting two files with identical names');
+		PrintHelp('','','leave the largest file in place and remove the smallest (default)');
+		PrintHelp('-n','--noremove','Never remove any files');
+		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
+		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names.');
+		PrintHelp('','','This will make directory names more consistent but is also a bit slower');
+		PrintHelp('','--silentskip','Supress messages about files skipped');
+		exit(0);
+	},
+	'n|noremove' => \$NeverRemove,
+	'l|largest' => \$RemoveLargest,
+	'i|insensitive' => \$DirInsensitive,
+	'a|allowspecial' => \$AllowSpecialChars,
+	'version' => sub {
+		print "mussort version $VERSION\n";
+		exit(0);
+	},
+	'silentskip' => \$SilentSkip,
+) or die('See ' . basename($0) . " --help for more information\n");
+
+CheckDep('id3info');
+CheckDep('ogginfo');
+
+if($NeverRemove) {
+	$RemoveLargest = 0;
+}
+
+if(not (@ARGV)) {
+	FatalError("Requires one option: the directory to process");
+}
+foreach(@ARGV) {
+	ProcessTree($_);
+}
+
+__END__
+
+=head1 NAME
+
+mussort - A simple music file sorting program
+
+=head1 SYNOPSIS
+
+mussort I<[OPTIONS]> I<dir1 dir2 ..>
+
+=head1 DESCRIPTION
+
+This is a simple tool that sorts a music collection. It reads the tags of all
+OGG Vorbis and MP3 files it finds and sorts them by that.
+
+This is how it sorts:
+
+	First it finds all music files in a dir. It then processes each file one
+	by one and reads information from then and then puts them into a nice sorted
+	directory tree beneath the base directory that was supplied to mussort.
+	The tree looks like this: dir/ARTIST/ALBUM/FILE.
+
+It also renames the files, like this:
+
+	TRACKNUMBER-ARTIST-TRACKNAME.EXT
+TRACKNUMBER is omitted if it isn't found.
+
+mussort will remove directories that end up empty after sorting.
+
+=head1 OPTIONS
+
+=over
+
+=item B<-h, --help>
+
+Display a short help screen and exit
+
+=item B<--version>
+
+Display version information and exit
+
+=item B<-l, --largest>
+
+When mussort reaches two files with identical names, it will remove (delete) the smallest
+file and leave the largest in place. This is default.
+
+=item B<-n, --noremove>
+
+When mussort reaches two files with identical names it will ignore one of the
+files (the last one it sees) and not sort it.
+
+=item B<-i, --insensitive>
+
+Makes mussort do case-insensitive searches for directory names. This is useful
+when the case in the name of an artist differs and makes mussort place all the
+music correctly into one directory. This I<might> be a bit slower than normal
+operation, but not much.
+
+=item B<-a, --allowspecial>
+
+This forces mussort to not strip special characters from file and directory
+names.
+
+=item B<--silentskip>
+
+Makes mussort not output a message about files that it skips (meaning files
+that isn't tagged properly).
+
+=back
+
+=head1 DEPENDENCIES
+
+It needs id3info from id3lib and ogginfo from vorbis-tools to get file information.
+
+=head1 BUGS AND LIMITATIONS
+
+It does not support other formats than MP3 and Ogg vorbis at this time, however
+support for other formats is possible in the future.
+
+=head1 INCOMPATIBILITIES
+
+None known.
+
+=head1 AUTHOR
+
+B<mussort> is written by Eskild Hustvedt I<<eskild -at- zerodogg d.ot org>>
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) Eskild Hustvedt 2007, 2008, 2009
+
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

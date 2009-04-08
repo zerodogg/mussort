@@ -1,0 +1,5 @@
+- Implement support for merging albums that appear to be compilations.
+	Keep a searchtable of albums in the current dir. When more than,
+	say, three seperate tracks appears in an album (and no doubles)
+	we resort the tracks in the album creating a new dir structure:
+	Various Artists/ALBUM/
