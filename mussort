@@ -225,15 +225,18 @@ sub GetInfo
 	# for MP3s
 	if ($hasAudioFile and $File =~ /ogg$/i)
 	{
-		{
+		eval {
 			local *STDERR;
+			# Audio::File outputs junk to STDERR we don't want, so temporarily redirect it
+			# to the black hole
 			open(STDERR,'>','/dev/null');
 			my $af = Audio::File->new($File);
-			$FileInfo{Title} = CleanTag($af->tag->title);
-			$FileInfo{Band} = CleanTag($af->tag->artist);
-			$FileInfo{Album} = CleanTag($af->tag->album);
-			$FileInfo{Track} = CleanTag($af->tag->track);
-		}
+			eval { $FileInfo{Title} = CleanTag($af->tag->title) };
+			eval { $FileInfo{Band} = CleanTag($af->tag->artist) };
+			eval { $FileInfo{Album} = CleanTag($af->tag->album) };
+			eval { $FileInfo{Track} = CleanTag($af->tag->track) };
+			1;
+		} or die($@);
 		if ($File =~ /mp3$/i)
 		{
 			$FileInfo{Ext} = 'mp3';
@@ -270,7 +273,7 @@ sub GetInfo
 		FatalError("Unknown filetype: $File\n");
 	}
 	# If we couldn't extract a track then try to extract it from the filename instead
-	if(not $FileInfo{Track} =~ /^\d+$/)
+	if(not defined $FileInfo{Track} or not $FileInfo{Track} =~ /^\d+$/)
 	{
 		my $Track = basename($File);
 		if ($Track =~ s/^(\d+).*$/$1/)
