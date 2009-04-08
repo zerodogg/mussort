@@ -2,6 +2,8 @@ Version 0.1.1
 - Better dependency checking
 - Better case-insensitive sorting
 - Some cleanup
+- Support for Audio::File which significantly speeds up
+	ogg vorbis sorting
 
 Version 0.1
 - Initial public release

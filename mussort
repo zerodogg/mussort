@@ -33,6 +33,7 @@ my $AllowSpecialChars;
 my $DirInsensitive;
 my $SilentSkip;
 my $AddInfoString;
+my $hasAudioFile;
 my %DirPreferance;
 
 # This makes sure the children are slayed properly
@@ -46,6 +47,7 @@ $SIG{CHLD} = sub {
 sub CheckDep
 {
 	my $cmd = shift;
+	my $alternate = shift;
 	if(not InPath($cmd))
 	{
 		# Multi-dimensional hash mapping distro -> command -> package
@@ -53,10 +55,12 @@ sub CheckDep
 			'/etc/apt/apt.conf.d/01ubuntu' => {
 				id3info => 'libid3-dev',
 				ogginfo => 'vorbis-tools',
+				'Audio::File' => 'libaudio-file-perl',
 			},
 			'/etc/debian_version' => {
 				ogginfo => 'vorbis-tools',
 				id3info => 'libid3-dev',
+				'Audio::File' => 'libaudio-file-perl',
 			}
 		);
 		foreach my $path (keys(%DepToPackage))
@@ -65,11 +69,20 @@ sub CheckDep
 			{
 				if ($DepToPackage{$path}{$cmd})
 				{
-					FatalError("The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.");
+					my $err = "The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.";
+					if ($alternate)
+					{
+						$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).\nIt can be found in the $DepToPackage{$path}{$alternate} package.";
+					}
+					FatalError($err);
 				}
 			}
 		}
-		FatalError("The command '$cmd' is missing. Please install it, then re-run mussort.");
+		my $err = "The command '$cmd' is missing. Please install it, then re-run mussort.";
+		if ($alternate)
+		{
+			$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).";
+		}
 	}
 	return true;
 }
@@ -208,7 +221,33 @@ sub GetInfo
 	$AddInfoString = undef;
 	my $File = shift;
 	my %FileInfo;
-	if($File =~ /mp3$/i)
+	# We only use Audio::File for OGGs. id3info appears to be faster
+	# for MP3s
+	if ($hasAudioFile and $File =~ /ogg$/i)
+	{
+		{
+			local *STDERR;
+			open(STDERR,'>','/dev/null');
+			my $af = Audio::File->new($File);
+			$FileInfo{Title} = CleanTag($af->tag->title);
+			$FileInfo{Band} = CleanTag($af->tag->artist);
+			$FileInfo{Album} = CleanTag($af->tag->album);
+			$FileInfo{Track} = CleanTag($af->tag->track);
+		}
+		if ($File =~ /mp3$/i)
+		{
+			$FileInfo{Ext} = 'mp3';
+		}
+		elsif($File =~ /ogg$/i)
+		{
+			$FileInfo{Ext} = 'ogg';
+		}
+		else
+		{
+			FatalError("Unknown filetype: $File\n");
+		}
+	}
+	elsif($File =~ /mp3$/i)
 	{
 		my $Info = GetMP3Info($File);
 		$FileInfo{Title} = CleanTag($Info->{TIT2});
@@ -324,7 +363,8 @@ sub GetNewDirName {
 	my $Info = shift;
 	my $BaseDir = shift;
 	
-	if($Info->{Band} eq 'Unknown') {
+	if($Info->{Band} eq 'Unknown' or not defined $Info->{Band} or not length $Info->{Band})
+	{
 		return(undef);
 	}
 	
@@ -361,19 +401,25 @@ sub GetNewDirName {
 				}
 			}
 			close($FirstDirHandle);
-			if(-d $BaseDir . '/' . $FirstDir) {
+			if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
+			{
 				opendir(my $SecondDirHandle,"$BaseDir/$FirstDir");
-				foreach(sort(readdir($SecondDirHandle))) {
+				foreach(sort(readdir($SecondDirHandle)))
+				{
 					next if not -d $_;
-					if(/^\Q$SecondDir\E$/i) {
+					if(/^\Q$SecondDir\E$/i)
+					{
 						$SecondDir = $_;
 						last;
-					} else {
+					}
+					else
+					{
 						my $TestDir = $SecondDir;
 						$TestDir =~ s/(-|_)+//g;
 						my $TestThis = $_;
 						$TestThis =~ s/(-|_)+//g;
-						if($TestThis =~ /^\Q$TestDir\E$/i) {
+						if($TestThis =~ /^\Q$TestDir\E$/i)
+						{
 							$SecondDir = $_;
 							last;
 						}
@@ -382,11 +428,14 @@ sub GetNewDirName {
 				close($SecondDirHandle);
 			}
 			$DirPreferance{$lowerFirst} = $FirstDir;
-			$DirPreferance{$lowerSecond} = $SecondDir;
+			if(defined $lowerSecond and length $lowerSecond)
+			{
+				$DirPreferance{$lowerSecond} = $SecondDir;
+			}
 		}
 	}
 
-	if(not $SecondDir eq 'Unknown') {
+	if(defined $SecondDir and length $SecondDir and not $SecondDir eq 'Unknown') {
 		return("$BaseDir/$FirstDir/$SecondDir/");
 	} else {
 		return("$BaseDir/$FirstDir/");
@@ -532,6 +581,30 @@ sub InPath {
 	foreach (split /:/, $ENV{PATH}) { if (-x "$_/@_" and not -d "$_/@_" ) {	return 1; } } return 0;
 }
 
+sub main
+{
+	if(eval('use Audio::File;1;'))
+	{
+		$hasAudioFile = 1;
+	}
+	else
+	{
+		CheckDep('id3info');
+		CheckDep('ogginfo','Audio::File');
+	}
+
+	if($NeverRemove) {
+		$RemoveLargest = 0;
+	}
+
+	if(not (@ARGV)) {
+		FatalError("Requires one option: the directory to process");
+	}
+	foreach(@ARGV) {
+		ProcessTree($_);
+	}
+}
+
 GetOptions (
 	'help|h' => sub {
 		print "mussort version $VERSION\n\n";
@@ -558,20 +631,7 @@ GetOptions (
 	'silentskip' => \$SilentSkip,
 ) or die('See ' . basename($0) . " --help for more information\n");
 
-CheckDep('id3info');
-CheckDep('ogginfo');
-
-if($NeverRemove) {
-	$RemoveLargest = 0;
-}
-
-if(not (@ARGV)) {
-	FatalError("Requires one option: the directory to process");
-}
-foreach(@ARGV) {
-	ProcessTree($_);
-}
-
+main();
 __END__
 
 =head1 NAME
