@@ -26,7 +26,7 @@ use IPC::Open2;
 use Cwd qw(realpath);
 use constant { true => 1, false => 0 };
 
-our $VERSION = 0.1;
+our $VERSION = 0.2;
 my $NeverRemove;
 my $RemoveLargest = 1;
 my $AllowSpecialChars;
