@@ -340,16 +340,21 @@ sub CleanTag {
 # Usage: my $NewFileName = GetNewFileName(InfoHash);
 sub GetNewFileName {
 	my $Info = shift;
-	if ($Info->{Title} eq 'Unknown' or $Info->{Band} eq 'Unknown') {
+	if (not defined $Info->{Title} or not defined $Info->{Band} or
+		$Info->{Title} eq 'Unknown' or $Info->{Band} eq 'Unknown')
+	{
 		return(undef);
 	}
-	my $NewName = "$Info->{Band}-$Info->{Title}.$Info->{Ext}";
-	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/) {
-		if(not $Info->{Track} =~ /\d\d/) {
+	my $NewName = $Info->{Band}.'-'.$Info->{Title}.'.'.$Info->{Ext};
+	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/)
+	{
+		if(not $Info->{Track} =~ /\d\d/)
+		{
 			$Info->{Track} = "0$Info->{Track}";
 		}
 		# Disallow 00/0
-		if($Info->{Track} > 0 ) {
+		if($Info->{Track} > 0 )
+		{
 			$NewName = "$Info->{Track}-$NewName";
 		}
 	}
@@ -603,6 +608,7 @@ sub main
 	foreach(@ARGV) {
 		ProcessTree($_);
 	}
+	exit(0);
 }
 
 GetOptions (
