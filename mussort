@@ -89,37 +89,44 @@ sub CheckDep
 
 # Purpose: Output a rename message
 # Usage: OutputRename(MESSAGE);
-sub OutputRename {
+sub OutputRename
+{
 	print "Rename: $_[0]\n";
 }
 
 # Purpose: Output a removal message
 # Usage: OutputRemove(MESSAGE);
-sub OutputRemove {
+sub OutputRemove
+{
 	print "Removed: $_[0]\n";
 }
 
 # Purpose: Output an error message
 # Usage: Error(MESSAGE);
-sub Error {
+sub Error
+{
 	warn "Error: $_[0]\n";
 }
 
 # Purpose: Output a fatal error message (causes die())
 # Usage: FatalError(MESSAGE);
-sub FatalError {
+sub FatalError
+{
 	die "Error: $_[0]\n";
 }
 
 # Purpose: Check if a directory is empty
 # Usage: DirIsEmpty(PATH);
 #  Returns 1 if it is empty, 0 if it isn't.
-sub DirIsEmpty {
-	if(not($_[0])) { return(0) }
-	opendir(TESTDIR, $_[0]);
+sub DirIsEmpty
+{
+	my $dir = shift;
+	return 0 if not $dir;
+	opendir(TESTDIR, $dir);
 	my @TestDir = readdir(TESTDIR);
 	closedir(TESTDIR);
-	if(not scalar @TestDir > 2) {
+	if(not scalar @TestDir > 2)
+	{
 		return 1;
 	}
 	return 0;
@@ -127,7 +134,8 @@ sub DirIsEmpty {
 
 # Purpose: Get information about an ogg vorbis file using ogginfo
 # Usage: my $Info = GetOggVorbisInfo(FILE);
-sub GetOggVorbisInfo {
+sub GetOggVorbisInfo
+{
 	my $InfoFile = shift;
 	$InfoFile = realpath($InfoFile);
 	my %Information = (
@@ -139,7 +147,8 @@ sub GetOggVorbisInfo {
 	local *STDERR;
 	open(STDERR,'>','/dev/null');
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'ogginfo', $InfoFile) or FatalError("Unable to open2(): $!\n");
-	while(<$Child_OUT>) {
+	while(<$Child_OUT>)
+	{
 		next if not m/=/;
 		chomp;
 		s/^\s+//g;
@@ -160,7 +169,8 @@ sub GetOggVorbisInfo {
 
 # Purpose: Get information about an mp3 file using id3info
 # Usage: my $Info = GetMP3Info(FILE);
-sub GetMP3Info {
+sub GetMP3Info
+{
 	my $InfoFile = shift;
 	my %Information = (
 		TIT2 => 'Unknown',
@@ -169,14 +179,16 @@ sub GetMP3Info {
 		TRCK => 'Unknown',
 	);
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3info', $InfoFile) or FatalError("Unable to open2(): $!");
-	while(<$Child_OUT>) {
+	while(<$Child_OUT>)
+	{
 		next if not /^==/;
 		chomp;
 		my $Opt = $_;
 		my $Val = $_;
 		$Opt =~ s/^===\s(\w+)\s.*/$1/g;
 		$Val =~ s/^.+\):\s(.+)$/$1/g;
-		if($Val =~ /\S/) {
+		if($Val =~ /\S/)
+		{
 			$Information{$Opt} = $Val;
 		}
 	}
@@ -195,7 +207,7 @@ sub ReTag_ogg
 	# It's not a dep, just used if available
 	if(not InPath('vorbiscomment'))
 	{
-		return(undef);
+		return;
 	}
 	return system('vorbiscomment','-a',$file,'-t',$tag);
 }
@@ -209,7 +221,7 @@ sub ReTag_mp3
 	# It's not a dep, just used if available
 	if(not InPath('id3tag'))
 	{
-		return(undef);
+		return;
 	}
 	return system('id3tag',$tag,$file);
 }
@@ -301,7 +313,8 @@ sub GetInfo
 
 # Purpose: Strip stuff we don't want in file/dir names
 # Usage: my $NewVar = CleanTag(OldVar);
-sub CleanTag {
+sub CleanTag
+{
 	my $Name = shift;
 	# Make & into and
 	$Name =~ s/\&/and/;
@@ -341,11 +354,12 @@ sub CleanTag {
 
 # Purpose: Get the new filename for the file
 # Usage: my $NewFileName = GetNewFileName(InfoHash);
-sub GetNewFileName {
+sub GetNewFileName
+{
 	my $Info = shift;
 	if (IsInvalidTagValue($Info->{Title}) or IsInvalidTagValue($Info->{Band}))
 	{
-		return(undef);
+		return;
 	}
 	my $NewName = $Info->{Band}.'-'.$Info->{Title}.'.'.$Info->{Ext};
 	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/)
@@ -381,13 +395,14 @@ sub IsInvalidTagValue
 
 # Purpose: Get the new directory path for the file
 # Usage: my $NewDirName = GetNewDirName(InfoHash);
-sub GetNewDirName {
+sub GetNewDirName
+{
 	my $Info = shift;
 	my $BaseDir = shift;
 	
 	if(IsInvalidTagValue($Info->{Band}))
 	{
-		return(undef);
+		return;
 	}
 	
 	my $FirstDir = $Info->{Band};
@@ -398,25 +413,35 @@ sub GetNewDirName {
 	$lowerFirst =~ s/[\.\,\&]//g;
 	my $lowerSecond = lc($SecondDir);
 	$lowerSecond =~ s/[\.\,\&]//g;
-	if($DirInsensitive) {
-		if($DirPreferance{$lowerFirst}) {
+	if($DirInsensitive)
+	{
+		if($DirPreferance{$lowerFirst})
+		{
 			$FirstDir = $DirPreferance{$lowerFirst};
-			if($DirPreferance{$lowerSecond}) {
+			if($DirPreferance{$lowerSecond})
+			{
 				$SecondDir = $DirPreferance{$lowerSecond};
 			}
-		} else {
+		}
+		else
+		{
 			opendir(my $FirstDirHandle,$BaseDir);
-			foreach(sort(readdir($FirstDirHandle))) {
+			foreach(sort(readdir($FirstDirHandle)))
+			{
 				next if not -d $_;
-				if(/^\Q$FirstDir\E/i) {
+				if(/^\Q$FirstDir\E/i)
+				{
 					$FirstDir = $_;
 					last;
-				} else {
+				}
+				else
+				{
 					my $TestDir = $FirstDir;
 					$TestDir =~ s/(-|_)+//g;
 					my $TestThis = $_;
 					$TestThis =~ s/(-|_)+//g;
-					if($TestThis =~ /^\Q$TestDir\E$/i) {
+					if($TestThis =~ /^\Q$TestDir\E$/i)
+					{
 						$FirstDir = $_;
 						last;
 					}
@@ -457,16 +482,20 @@ sub GetNewDirName {
 		}
 	}
 
-	if(defined $SecondDir and length $SecondDir and not $SecondDir eq 'Unknown') {
+	if(defined $SecondDir and length $SecondDir and not $SecondDir eq 'Unknown')
+	{
 		return("$BaseDir/$FirstDir/$SecondDir/");
-	} else {
+	}
+	else
+	{
 		return("$BaseDir/$FirstDir/");
 	}
 }
 
 # Purpose: Do the actual renaming
 # Usage: RenameFile(Original name, New Name, BaseDir);
-sub RenameFile {
+sub RenameFile
+{
 	my $OrigFile = shift;
 	my $NewFile = shift;
 	my $BaseDir = shift;
@@ -480,31 +509,40 @@ sub RenameFile {
 	$OutputNewName =~ s#/+#/#g;
 	my $Directory = dirname($NewFile);
 
-	if($OutputOldName eq $OutputNewName) {
-		return();
+	if($OutputOldName eq $OutputNewName)
+	{
+		return;
 	}
 	# If it exists and isn't a directory then just return
-	if(-e $Directory and not -d $Directory) {
-		return();
+	if(-e $Directory and not -d $Directory)
+	{
+		return;
 	}
 	# If the length of the filename is less than 7 just return
-	if(length(basename($NewFile)) < 7) {
-		return();
+	if(length(basename($NewFile)) < 7)
+	{
+		return;
 	}
 	# Create the dir
-	eval { mkpath(dirname($NewFile)) };
-	if($@) {
+	eval { 
+		mkpath(dirname($NewFile));
+		1;
+	} 
+		or do
+	{
 		FatalError('Failed to mkpath ' . dirname($NewFile) . ": $@\nWas processing $OrigFile");
-	}
+	};
 	# Check if the file already exists
-	if(-e $NewFile) {
+	if(-e $NewFile)
+	{
 		# Check which file is the largest
-		if(-s $NewFile > -s $OrigFile) {
+		if(-s $NewFile > -s $OrigFile)
+		{
 			return if not $RemoveLargest;
 			return if $NeverRemove;
 			print "Remove: $OrigFile\n";
 			unlink($OrigFile);
-			return();
+			return;
 		}
 	}
 	# Output info and do the actual renaming
@@ -518,27 +556,32 @@ sub RenameFile {
 
 # Purpose: Remove the supplied directory and up to two directories below it in the tree.
 # Usage: RemoveIfEmpty(DIR);
-sub RemoveIfEmpty {
+sub RemoveIfEmpty
+{
 	return if $NeverRemove;
 	my $Dir = shift;
 	my $SecondDir = dirname($Dir);
 	my $ThirdDir = dirname($SecondDir);
 	my $Removed;
-	foreach($Dir,$SecondDir,$ThirdDir) {
-		if(not -d $_ or not DirIsEmpty($_)) {
+	foreach($Dir,$SecondDir,$ThirdDir)
+	{
+		if(not -d $_ or not DirIsEmpty($_))
+		{
 			last;
 		}
 		rmdir($_) or Error "Unable to remove $Dir: $!";
 		$Removed = $_;
 	}
-	if($Removed) {
+	if($Removed)
+	{
 		OutputRemove $Removed;
 	}
 }
 
 # Purpose: Process a file
 # Usage: ProcessFile(FILE);
-sub ProcessFile {
+sub ProcessFile
+{
 	my $File = shift;
 	my $BaseDir = shift;
 	return if -d $File;
@@ -548,11 +591,13 @@ sub ProcessFile {
 	# Build a new filename for the music file
 	my $NewName = GetNewFileName($FileInfo);
 	my $NewDir = GetNewDirName($FileInfo,$BaseDir);
-	if(not defined($NewName)) {
-		if(not $SilentSkip) {
+	if(not defined($NewName))
+	{
+		if(not $SilentSkip)
+		{
 			print "Skipped: $File\n";
 		}
-		return();
+		return;
 	}
 	my $DirInfo = dirname($File);
 	$DirInfo =~ s/^\Q$BaseDir\E//;
@@ -578,7 +623,8 @@ sub sortFiles
 
 # Purpose: Traverse a tree
 # Usage: ProcessTree(DIR);
-sub ProcessTree {
+sub ProcessTree
+{
 	my $Dir = shift;
 	$Dir = realpath($Dir);
 	print "Processing: $Dir\n";
@@ -593,13 +639,15 @@ sub ProcessTree {
 
 # Purpose: Print formatted --help output
 # Usage: PrintHelp("-shortoption", "--longoption", "description");
-sub PrintHelp {
+sub PrintHelp
+{
 	printf "%-4s %-16s %s\n", "$_[0]", "$_[1]", "$_[2]";
 }
 
 # Purpose: Check for a file in path
 # Usage: InPath(FILE)
-sub InPath {
+sub InPath
+{
 	foreach (split /:/, $ENV{PATH}) { if (-x "$_/@_" and not -d "$_/@_" ) {	return 1; } } return 0;
 }
 
@@ -616,14 +664,17 @@ sub main
 		CheckDep('ogginfo','Audio::File');
 	}
 
-	if($NeverRemove) {
+	if($NeverRemove)
+	{
 		$RemoveLargest = 0;
 	}
 
-	if(not (@ARGV)) {
+	if(not (@ARGV))
+	{
 		FatalError("Requires one option: the directory to process");
 	}
-	foreach(@ARGV) {
+	foreach(@ARGV)
+	{
 		ProcessTree($_);
 	}
 	exit(0);
