@@ -638,10 +638,61 @@ sub ProcessTree
 }
 
 # Purpose: Print formatted --help output
-# Usage: PrintHelp("-shortoption", "--longoption", "description");
+# Usage: PrintHelp('-shortoption', '--longoption', 'description');
+#  Description will be reformatted to fit within a normal terminal
 sub PrintHelp
 {
-	printf "%-4s %-16s %s\n", "$_[0]", "$_[1]", "$_[2]";
+	# The short option
+	my $short = shift,
+	# The long option
+	my $long = shift;
+	# The description
+	my $desc = shift;
+	# The generated description that will be printed in the end
+	my $GeneratedDesc;
+	# The current line of the description
+	my $currdesc = '';
+	# The maximum length any line can be
+	my $maxlen = 80;
+	# The length the options take up
+	my $optionlen = 20;
+	# Check if the short/long are LONGER than optionlen, if so, we need
+	# to do some additional magic to take up only $maxlen.
+	# The +1 here is because we always add a space between them, no matter what
+	if ((length($short) + length($long) + 1) > $optionlen)
+	{
+		$optionlen = length($short) + length($long) + 1;
+	}
+	# Split the description into lines
+	foreach my $part (split(/ /,$desc))
+	{
+		if(defined $GeneratedDesc)
+		{
+			if ((length($currdesc) + length($part) + 1 + 20) > $maxlen)
+			{
+				$GeneratedDesc .= "\n";
+				$currdesc = '';
+			}
+			else
+			{
+				$currdesc .= ' ';
+				$GeneratedDesc .= ' ';
+			}
+		}
+		$currdesc .= $part;
+		$GeneratedDesc .= $part;
+	}
+	# Something went wrong
+	die('Option mismatch') if not $GeneratedDesc;
+	# Print it all
+	foreach my $description (split(/\n/,$GeneratedDesc))
+	{
+		printf "%-4s %-15s %s\n", $short,$long,$description;
+		# Set short and long to '' to ensure we don't print the options twice
+		$short = '';$long = '';
+	}
+	# Succeed
+	return true;
 }
 
 # Purpose: Check for a file in path
@@ -671,7 +722,7 @@ sub main
 
 	if(not (@ARGV))
 	{
-		FatalError("Requires one option: the directory to process");
+		FatalError("Requires one option: the directory to process. See --help for more information");
 	}
 	foreach(@ARGV)
 	{
@@ -686,12 +737,10 @@ GetOptions (
 		print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
 		PrintHelp('-h','--help','Display this help screen');
 		PrintHelp('','--version','Display version information');
-		PrintHelp('-l','--largest','When hitting two files with identical names');
-		PrintHelp('','','leave the largest file in place and remove the smallest (default)');
+		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (default)');
 		PrintHelp('-n','--noremove','Never remove any files');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
-		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names.');
-		PrintHelp('','','This will make directory names more consistent but is also a bit slower');
+		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also a bit slower');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		exit(0);
 	},
