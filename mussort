@@ -304,7 +304,7 @@ sub GetInfo
 			# Additional info
 			if(defined($r))
 			{
-				$AddInfoString = "Added track tag to ";
+				$AddInfoString = 'Added track tag to ';
 			}
 		}
 	}
@@ -550,7 +550,7 @@ sub RenameFile
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 	if ($AddInfoString)
 	{
-		print " ".$AddInfoString.$OutputNewName."\n";
+		print ' '.$AddInfoString.$OutputNewName."\n";
 	}
 }
 
@@ -724,7 +724,7 @@ sub main
 
 	if(not (@ARGV))
 	{
-		FatalError("Requires one option: the directory to process. See --help for more information");
+		FatalError('Requires one option: the directory to process. See --help for more information');
 	}
 	foreach(@ARGV)
 	{
@@ -770,20 +770,14 @@ mussort I<[OPTIONS]> I<dir1 dir2 ..>
 
 =head1 DESCRIPTION
 
-This is a simple tool that sorts a music collection. It reads the tags of all
-OGG Vorbis and MP3 files it finds and sorts them by that.
+This is a simple tool that sorts a music collection.
 
-This is how it sorts:
-
-	First it finds all music files in a dir. It then processes each file one
-	by one and reads information from then and then puts them into a nice sorted
-	directory tree beneath the base directory that was supplied to mussort.
-	The tree looks like this: dir/ARTIST/ALBUM/FILE.
-
-It also renames the files, like this:
-
-	TRACKNUMBER-ARTIST-TRACKNAME.EXT
-TRACKNUMBER is omitted if it isn't found.
+It recursively searches a directory for MP3 and OGG Vorbis files, processing
+them one by one. It then reads the information from the file and puts them into
+a newly sorted directory tree, in the form
+I<base_directory/ARTIST/ALBUM/FILENAME>.  The files are renamed to
+I<TRACKNUMBER-ARTIST-TRACKNAME.EXT>, where TRACKNUMBER is omitted if it isn't
+found.
 
 mussort will remove directories that end up empty after sorting.
 
