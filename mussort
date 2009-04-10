@@ -586,6 +586,8 @@ sub ProcessFile
 	my $BaseDir = shift;
 	return if -d $File;
 	return if not $File =~ /\.(ogg|mp3)$/gi;
+	# It might be a dangling symlink, if it is then just silently skip it
+	return if not -e $File;
 	# Get info
 	my $FileInfo = GetInfo($File);
 	# Build a new filename for the music file
