@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# mussort
+# mussort - a simple program for sorting music collections
 # Copyright (C) Eskild Hustvedt 2007, 2008, 2009
 #
 # This program is free software: you can redistribute it and/or modify
@@ -34,6 +34,7 @@ my $DirInsensitive;
 my $SilentSkip;
 my $AddInfoString;
 my $hasAudioFile;
+my $CompilationDetection;
 my %DirPreferance;
 
 # This makes sure the children are slayed properly
@@ -284,6 +285,16 @@ sub GetInfo
 	{
 		FatalError("Unknown filetype: $File\n");
 	}
+
+	if ($CompilationDetection and defined $FileInfo{Album})
+	{
+		if(defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
+		{
+			$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}} = [];
+		}
+		push(@{$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}}},$File);
+	}
+
 	# If we couldn't extract a track then try to extract it from the filename instead
 	if(not defined $FileInfo{Track} or not $FileInfo{Track} =~ /^\d+$/)
 	{
@@ -357,6 +368,7 @@ sub CleanTag
 sub GetNewFileName
 {
 	my $Info = shift;
+	my $Compilation = shift;
 	if (IsInvalidTagValue($Info->{Title}) or IsInvalidTagValue($Info->{Band}))
 	{
 		return;
@@ -399,14 +411,25 @@ sub GetNewDirName
 {
 	my $Info = shift;
 	my $BaseDir = shift;
+	my $Compilation = shift;
 	
 	if(IsInvalidTagValue($Info->{Band}))
 	{
 		return;
 	}
 	
-	my $FirstDir = $Info->{Band};
-	my $SecondDir = $Info->{Album};
+	my $FirstDir;
+	my $SecondDir;
+	if ($Compilation)
+	{
+		$FirstDir = $Info->{Album};
+		$SecondDir = '';
+	}
+	else
+	{
+		$FirstDir = $Info->{Band};
+		$SecondDir = $Info->{Album};
+	}
 	
 	# Get lowercased and fixed name
 	my $lowerFirst = lc($FirstDir);
@@ -554,6 +577,20 @@ sub RenameFile
 	}
 }
 
+# Purpose: Queue a file for renaming
+# Usage: QueueRename(Original name, New Name, BaseDir);
+sub QueueRename
+{
+	my $OrigFile = shift;
+	my $NewFile = shift;
+	my $BaseDir = shift;
+	return if ($OrigFile eq $NewFile);
+	$CompilationDetection->{fileMap}{$OrigFile} = {
+		newFile => $NewFile,
+		baseDir => $BaseDir,
+	};
+}
+
 # Purpose: Remove the supplied directory and up to two directories below it in the tree.
 # Usage: RemoveIfEmpty(DIR);
 sub RemoveIfEmpty
@@ -588,11 +625,29 @@ sub ProcessFile
 	return if not $File =~ /\.(ogg|mp3)$/gi;
 	# It might be a dangling symlink, if it is then just silently skip it
 	return if not -e $File;
+	my($NewName,$NewDir) = getNewFilePath($File,$BaseDir);
+	return if not defined $NewName or not defined $NewDir;
+	if ($CompilationDetection)
+	{
+		QueueRename($File,"$NewDir/$NewName",$BaseDir);
+	}
+	else
+	{
+		RenameFile($File,"$NewDir/$NewName",$BaseDir);
+		RemoveIfEmpty(dirname($File));
+	}
+}
+
+# Purpose: Get the new dir path and filenames for a file
+# Usage: my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,Compilation?);
+sub getNewFilePath
+{
+	my($File,$BaseDir,$Compilation) = @_;
 	# Get info
 	my $FileInfo = GetInfo($File);
 	# Build a new filename for the music file
-	my $NewName = GetNewFileName($FileInfo);
-	my $NewDir = GetNewDirName($FileInfo,$BaseDir);
+	my $NewName = GetNewFileName($FileInfo,$Compilation);
+	my $NewDir = GetNewDirName($FileInfo,$BaseDir,$Compilation);
 	if(not defined($NewName))
 	{
 		if(not $SilentSkip)
@@ -604,8 +659,82 @@ sub ProcessFile
 	my $DirInfo = dirname($File);
 	$DirInfo =~ s/^\Q$BaseDir\E//;
 	$NewDir = $NewDir ? $NewDir : dirname($File);
-	RenameFile($File,"$NewDir/$NewName",$BaseDir);
-	RemoveIfEmpty(dirname($File));
+	return($NewName,$NewDir);
+}
+
+# Purpose: Process pending compilation actions in $CompilationDetection
+# Usage: ProcessCompilation();
+sub ProcessCompilation
+{
+	my $BaseDir = shift;
+
+	my $compilationAlbums = [];
+	my @compilationRename;
+
+	foreach my $album (keys(%{$CompilationDetection->{album}}))
+	{
+		next if not length $album;
+		my $thisAlbum = $CompilationDetection->{album}->{$album};
+		if (not keys(%{$thisAlbum}) > 2)
+		{
+			next;
+		}
+
+		foreach my $artist (keys(%{$thisAlbum}))
+		{
+			if(@{$thisAlbum->{$artist}} > 2)
+			{
+				next;
+			}
+		}
+
+		print "Detected compilation album: $album\n";
+		push(@{$compilationAlbums}, $album);
+	}
+	foreach my $album (@{$compilationAlbums})
+	{
+		my $thisAlbum = $CompilationDetection->{album}->{$album};
+		my @files;
+		foreach my $artist (keys %{$thisAlbum})
+		{
+			foreach my $file (@{$thisAlbum->{$artist}})
+			{
+				push(@files,$file);
+				if ($CompilationDetection->{fileMap} and $CompilationDetection->{fileMap}->{$file})
+				{
+					delete($CompilationDetection->{fileMap}->{$file});
+				}
+			}
+		}
+		push(@compilationRename,\@files);
+	}
+
+	# First, rename those left in fileMap
+	if ($CompilationDetection->{fileMap})
+	{
+		foreach my $file (keys %{$CompilationDetection->{fileMap}})
+		{
+			RenameFile($file,
+				$CompilationDetection->{fileMap}->{$file}->{newFile},
+				$CompilationDetection->{fileMap}->{$file}->{baseDir},
+			);
+		}
+	}
+
+	foreach my $compilation (@compilationRename)
+	{
+		foreach my $File (@{$compilation})
+		{
+			# Build a new filename for the music file
+			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
+			next if not defined $NewDir or not defined $NewName;
+			RenameFile($File,"$NewDir/$NewName",$BaseDir);
+			RemoveIfEmpty(dirname($File));
+		}
+	}
+
+	# Reset it for the next dir
+	$CompilationDetection = {};
 }
 
 # Purpose: Sort files
@@ -636,6 +765,10 @@ sub ProcessTree
 		},
 		$Dir
 	);
+	if ($CompilationDetection)
+	{
+		ProcessCompilation($Dir);
+	}
 	return(1);
 }
 
@@ -743,6 +876,7 @@ GetOptions (
 		PrintHelp('-n','--noremove','Never remove any files');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
 		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also a bit slower');
+		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		exit(0);
 	},
@@ -750,6 +884,7 @@ GetOptions (
 	'l|largest' => \$RemoveLargest,
 	'i|insensitive' => \$DirInsensitive,
 	'a|allowspecial' => \$AllowSpecialChars,
+	'c|compilation' => sub { $CompilationDetection = {} },
 	'version' => sub {
 		print "mussort version $VERSION\n";
 		exit(0);
@@ -814,6 +949,13 @@ operation, but not much.
 
 This forces mussort to not strip special characters from file and directory
 names.
+
+=item B<-c, --compilation>
+
+Enables compilation detection. In this mode mussort will go through all files without
+moving them first, sorting them in an internal data structure, then it will attempt
+to detect compilation albums and re-sort members of the compilation albums before
+finally moving files on-disk.
 
 =item B<--silentskip>
 
