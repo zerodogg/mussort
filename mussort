@@ -914,6 +914,10 @@ I<base_directory/ARTIST/ALBUM/FILENAME>.  The files are renamed to
 I<TRACKNUMBER-ARTIST-TRACKNAME.EXT>, where TRACKNUMBER is omitted if it isn't
 found.
 
+If you use --compilation then the sorting will differ for those albums that are
+detected to be compilation albums, those will be sorted as
+I<base_directory/ALBUM/FILENAME> instead.
+
 mussort will remove directories that end up empty after sorting.
 
 =head1 OPTIONS
@@ -943,7 +947,8 @@ files (the last one it sees) and not sort it.
 Makes mussort do case-insensitive searches for directory names. This is useful
 when the case in the name of an artist differs and makes mussort place all the
 music correctly into one directory. This I<might> be a bit slower than normal
-operation, but not much.
+operation, but not much. You can combine this option with I<--compilation> if
+you want to.
 
 =item B<-a, --allowspecial>
 
@@ -952,10 +957,16 @@ names.
 
 =item B<-c, --compilation>
 
-Enables compilation detection. In this mode mussort will go through all files without
-moving them first, sorting them in an internal data structure, then it will attempt
-to detect compilation albums and re-sort members of the compilation albums before
-finally moving files on-disk.
+Enables compilation detection. In this mode mussort will go through all files
+without moving them first, sorting them in an internal data structure, then it
+will attempt to detect compilation albums and re-sort members of the
+compilation albums before finally moving files on-disk. Instead of placing them
+into a directory tree matching I<ALBUM/FILENAME> instead of
+I<ARTIST/ALBUM/FILENAME>.
+
+Note that this mode is a bit slower than normal mode, and it will take a bit
+longer before any actual changes are done. This is because it needs to search
+through all files before it can start to rename them.
 
 =item B<--silentskip>
 
