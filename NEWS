@@ -4,6 +4,9 @@ Version 0.2
 - Some cleanup
 - Support for Audio::File which significantly speeds up
 	ogg vorbis sorting
+- Added --compilation - a mode where mussort will attempt to detect
+	compilation albums and sort those properly as well
+- Now sets the terminal title
 
 Version 0.1
 - Initial public release
