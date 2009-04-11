@@ -43,6 +43,22 @@ $SIG{CHLD} = sub {
        	return(1)
 };
 
+# Purpose: Set the title of the xterm/screen
+# Usage: setTermTitle(TITLE);
+sub setTermTitle
+{
+	return if not defined $ENV{TERM};
+	my $title = shift;
+	if ($ENV{TERM} =~ /screen/)
+	{
+		print "\033k$title\033\\";
+	}
+	else
+	{
+		print "\033]0;$title\007";
+	}
+}
+
 # Purpose: Check for a dependency
 # Usage: CheckDep(COMMAND);
 sub CheckDep
@@ -86,20 +102,6 @@ sub CheckDep
 		}
 	}
 	return true;
-}
-
-# Purpose: Output a rename message
-# Usage: OutputRename(MESSAGE);
-sub OutputRename
-{
-	print "Rename: $_[0]\n";
-}
-
-# Purpose: Output a removal message
-# Usage: OutputRemove(MESSAGE);
-sub OutputRemove
-{
-	print "Removed: $_[0]\n";
 }
 
 # Purpose: Output an error message
@@ -288,7 +290,7 @@ sub GetInfo
 
 	if ($CompilationDetection and defined $FileInfo{Album})
 	{
-		if(defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
+		if(not defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
 		{
 			$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}} = [];
 		}
@@ -422,6 +424,10 @@ sub GetNewDirName
 	my $SecondDir;
 	if ($Compilation)
 	{
+		if(IsInvalidTagValue($Info->{Album}))
+		{
+			return;
+		}
 		$FirstDir = $Info->{Album};
 		$SecondDir = '';
 	}
@@ -532,7 +538,7 @@ sub RenameFile
 	$OutputNewName =~ s#/+#/#g;
 	my $Directory = dirname($NewFile);
 
-	if($OutputOldName eq $OutputNewName)
+	if(($OutputOldName eq $OutputNewName) or ($NewFile eq $OrigFile))
 	{
 		return;
 	}
@@ -569,7 +575,7 @@ sub RenameFile
 		}
 	}
 	# Output info and do the actual renaming
-	OutputRename "$OutputOldName -> $OutputNewName";
+	print "Rename: $OutputOldName -> $OutputNewName\n";
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 	if ($AddInfoString)
 	{
@@ -611,7 +617,7 @@ sub RemoveIfEmpty
 	}
 	if($Removed)
 	{
-		OutputRemove $Removed;
+		print "Removed: $Removed\n";
 	}
 }
 
@@ -673,7 +679,8 @@ sub ProcessCompilation
 
 	foreach my $album (keys(%{$CompilationDetection->{album}}))
 	{
-		next if not length $album;
+		next if IsInvalidTagValue($album);
+
 		my $thisAlbum = $CompilationDetection->{album}->{$album};
 		if (not keys(%{$thisAlbum}) > 2)
 		{
@@ -688,12 +695,6 @@ sub ProcessCompilation
 			}
 		}
 
-		print "Detected compilation album: $album\n";
-		push(@{$compilationAlbums}, $album);
-	}
-	foreach my $album (@{$compilationAlbums})
-	{
-		my $thisAlbum = $CompilationDetection->{album}->{$album};
 		my @files;
 		foreach my $artist (keys %{$thisAlbum})
 		{
@@ -706,7 +707,10 @@ sub ProcessCompilation
 				}
 			}
 		}
-		push(@compilationRename,\@files);
+		push(@compilationRename,{
+				files => \@files,
+				album => $album,
+			});
 	}
 
 	# First, rename those left in fileMap
@@ -721,8 +725,10 @@ sub ProcessCompilation
 		}
 	}
 
-	foreach my $compilation (@compilationRename)
+	foreach my $compilationRef (@compilationRename)
 	{
+		my $compilation = $compilationRef->{files};
+		print "Detected compilation album: $compilationRef->{album}\n";
 		foreach my $File (@{$compilation})
 		{
 			# Build a new filename for the music file
@@ -757,7 +763,9 @@ sub sortFiles
 sub ProcessTree
 {
 	my $Dir = shift;
+	setTermTitle('mussort ['.$Dir.']');
 	$Dir = realpath($Dir);
+
 	print "Processing: $Dir\n";
 	find({
 			wanted => sub { ProcessFile($File::Find::name,$Dir); },
