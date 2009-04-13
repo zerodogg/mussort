@@ -903,9 +903,9 @@ sub main
 	}
 	else
 	{
-		CheckDep('id3info');
 		CheckDep('ogginfo','Audio::File');
 	}
+	CheckDep('id3info');
 
 	if($NeverRemove)
 	{
