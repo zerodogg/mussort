@@ -780,6 +780,55 @@ sub ProcessTree
 	return(1);
 }
 
+# Purpose: Output information useful for debugging
+# Usage: debugInfo();
+sub debugInfo
+{
+	eval('use Digest::MD5; use IPC::Open2;');
+
+	my $format = '%-16s: %s'."\n";
+	printf($format,'mussort version',$VERSION);
+
+	# Get ogginfo/i3info versions
+	my($id3ver,$oggver) = ('missing','missing');
+
+	if(InPath('id3info'))
+	{
+		open2(my $out, my $in, 'id3info','-V');
+		$id3ver = <$out>;
+		$id3ver =~ s/^\D+\d?\D+//;
+		chomp($id3ver);
+	}
+
+	if(InPath('ogginfo'))
+	{
+		open2(my $out, my $in, 'ogginfo','-V');
+		$oggver = <$out>;
+		$oggver =~ s/^\D+//;
+		chomp($oggver);
+	}
+
+	printf($format,'ogginfo version',$oggver);
+	printf($format,'id3info version',$id3ver);
+	if(eval('use Audio::File;1;'))
+	{
+		printf($format,'Audio::File',$Audio::File::VERSION);
+	}
+	else
+	{
+		printf($format,'Audio::File','missing');
+	}
+
+	my $md5 = Digest::MD5->new();
+	my $loc = realpath($0);
+	open(my $f,'<',$loc);
+	$md5->addfile($f);
+	my $digest = $md5->hexdigest;
+	close($f);
+	printf($format,'MD5:',$digest);
+	exit(0);
+}
+
 # Purpose: Print formatted --help output
 # Usage: PrintHelp('-shortoption', '--longoption', 'description');
 #  Description will be reformatted to fit within a normal terminal
@@ -892,6 +941,7 @@ GetOptions (
 	'l|largest' => \$RemoveLargest,
 	'i|insensitive' => \$DirInsensitive,
 	'a|allowspecial' => \$AllowSpecialChars,
+	'debuginfo' => \&debugInfo,
 	'c|compilation' => sub { $CompilationDetection = {} },
 	'version' => sub {
 		print "mussort version $VERSION\n";
