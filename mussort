@@ -784,7 +784,7 @@ sub ProcessTree
 # Usage: debugInfo();
 sub debugInfo
 {
-	eval('use Digest::MD5; use IPC::Open2;');
+	eval('use Digest::MD5; use IPC::Open3;');
 
 	my $format = '%-16s: %s'."\n";
 	printf($format,'mussort version',$VERSION);
@@ -794,7 +794,7 @@ sub debugInfo
 
 	if(InPath('id3info'))
 	{
-		open2(my $out, my $in, 'id3info','-V');
+		open3(my $in, my $out,my $err, 'id3info','-V');
 		$id3ver = <$out>;
 		$id3ver =~ s/^\D+\d?\D+//;
 		chomp($id3ver);
@@ -802,9 +802,14 @@ sub debugInfo
 
 	if(InPath('ogginfo'))
 	{
-		open2(my $out, my $in, 'ogginfo','-V');
+		# --meh isn't a valid command-line parameter, but older versions doesn't have -V,
+		# but to an invalid parameter (--meh) it will give us a version number we can regex
+		# out
+		open3(my $in, my $out, my $err, 'ogginfo','--meh');
+		local $/ = undef;
 		$oggver = <$out>;
 		$oggver =~ s/^\D+//;
+		$oggver =~ s/\n.*//g;
 		chomp($oggver);
 	}
 
