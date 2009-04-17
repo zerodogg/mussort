@@ -1048,6 +1048,8 @@ ogginfo from vorbis-tools (slower) to get file information.
 It does not support other formats than MP3 and Ogg vorbis at this time, however
 support for other formats is possible in the future.
 
+If you find a bug, please report it at L<http://random.zerodogg.org/mussort/bugs>.
+
 =head1 INCOMPATIBILITIES
 
 None known.
