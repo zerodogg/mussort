@@ -235,10 +235,11 @@ sub GetInfo
 {
 	$AddInfoString = undef;
 	my $File = shift;
+	my $forceNoAudioFile = shift;
 	my %FileInfo;
 	# We only use Audio::File for OGGs. id3info appears to be faster
 	# for MP3s
-	if ($hasAudioFile and $File =~ /ogg$/i)
+	if (not $forceNoAudioFile and $hasAudioFile and $File =~ /ogg$/i)
 	{
 		eval {
 			local *STDERR;
@@ -251,7 +252,18 @@ sub GetInfo
 			eval { $FileInfo{Album} = CleanTag($af->tag->album) };
 			eval { $FileInfo{Track} = CleanTag($af->tag->track) };
 			1;
-		} or die($@);
+		} or do {
+			my $err = $@;
+			if(InPath('ogginfo'))
+			{
+				warn('Audio::File appears to have crashed for this file, using ogginfo for it instead. Error: '.$err);
+				return GetInfo($File,true);
+			}
+			else
+			{
+				die($err);
+			}
+		};
 		if ($File =~ /mp3$/i)
 		{
 			$FileInfo{Ext} = 'mp3';
@@ -935,7 +947,7 @@ GetOptions (
 		PrintHelp('-h','--help','Display this help screen');
 		PrintHelp('','--version','Display version information');
 		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (default)');
-		PrintHelp('-n','--noremove','Never remove any files');
+		PrintHelp('-n','--noremove','Never remove any files (overrides --largest)');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
 		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also a bit slower');
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
