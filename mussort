@@ -136,7 +136,7 @@ sub DirIsEmpty
 }
 
 # Purpose: Get information about an ogg vorbis file using ogginfo
-# Usage: my $Info = GetOggVorbisInfo(FILE);
+# Usage: my %Info = GetOggVorbisInfo(FILE);
 sub GetOggVorbisInfo
 {
 	my $InfoFile = shift;
@@ -150,6 +150,7 @@ sub GetOggVorbisInfo
 	local *STDERR;
 	open(STDERR,'>','/dev/null');
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'ogginfo', $InfoFile) or FatalError("Unable to open2(): $!\n");
+	my $hadInfo = false;
 	while(<$Child_OUT>)
 	{
 		next if not m/=/;
@@ -160,18 +161,36 @@ sub GetOggVorbisInfo
 		$Opt =~ s/^\s*(.*)\s*=.*/$1/;
 		$Opt =~ tr[a-z][A-Z];
 		$Val =~ s/^.*=\s*(.*)\s*/$1/;
-		if($Val =~ /\S/) {
+		if($Val =~ /\S/)
+		{
+			if(not $Opt eq 'TRACKNUMBER')
+			{
+				$hadInfo = true;
+			}
 			$Information{$Opt} = $Val;
 		}
 	}
 	close($Child_OUT);
 	close($Child_IN);
 	$Information{TRACKNUMBER} =~ s#/.*##;
-	return(\%Information);
+	if ($hadInfo)
+	{
+		my %FileInfo;
+		$FileInfo{Title} = CleanTag($Information{TITLE});
+		$FileInfo{Band} = CleanTag($Information{ARTIST});
+		$FileInfo{Album} = CleanTag($Information{ALBUM});
+		$FileInfo{Track} = CleanTag($Information{TRACKNUMBER});
+		$FileInfo{Ext} = 'ogg';
+		return %FileInfo;
+	}
+	elsif ($hasAudioFile)
+	{
+		return GetInfoFromAudioFile($InfoFile);
+	}
 }
 
 # Purpose: Get information about an mp3 file using id3info
-# Usage: my $Info = GetMP3Info(FILE);
+# Usage: my %Info = GetMP3Info(FILE);
 sub GetMP3Info
 {
 	my $InfoFile = shift;
@@ -182,6 +201,7 @@ sub GetMP3Info
 		TRCK => 'Unknown',
 	);
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3info', $InfoFile) or FatalError("Unable to open2(): $!");
+	my $hadInfo = false;
 	while(<$Child_OUT>)
 	{
 		next if not /^==/;
@@ -192,13 +212,75 @@ sub GetMP3Info
 		$Val =~ s/^.+\):\s(.+)$/$1/g;
 		if($Val =~ /\S/)
 		{
+			if(not $Opt eq 'TRCK')
+			{
+				$hadInfo = true;
+			}
 			$Information{$Opt} = $Val;
 		}
 	}
 	close($Child_OUT);
 	close($Child_IN);
 	$Information{TRCK} =~ s#/.*##;
-	return(\%Information);
+	if ($hadInfo)
+	{
+		my %FileInfo;
+		$FileInfo{Title} = CleanTag($Information{TIT2});
+		$FileInfo{Band} = CleanTag($Information{TPE1});
+		$FileInfo{Album} = CleanTag($Information{TALB});
+		$FileInfo{Track} = CleanTag($Information{TRCK});
+		$FileInfo{Ext} = 'mp3';
+		return(%FileInfo);
+	}
+	elsif ($hasAudioFile)
+	{
+		return GetInfoFromAudioFile($InfoFile);
+	}
+	return;
+}
+
+# Purpose: Get information about an audio file using Audio::File
+# Usage: my %Info = GetInfoFromAudioFile(FILE);
+sub GetInfoFromAudioFile
+{
+	my $File = shift;
+	my %FileInfo;
+	eval {
+		local *STDERR;
+		# Audio::File outputs junk to STDERR we don't want, so temporarily redirect it
+		# to the black hole
+		open(STDERR,'>','/dev/null');
+		my $af = Audio::File->new($File);
+		eval { $FileInfo{Title} = CleanTag($af->tag->title) };
+		eval { $FileInfo{Band} = CleanTag($af->tag->artist) };
+		eval { $FileInfo{Album} = CleanTag($af->tag->album) };
+		eval { $FileInfo{Track} = CleanTag($af->tag->track) };
+		1;
+	} or do {
+		my $err = $@;
+		if(InPath('ogginfo'))
+		{
+			warn('Audio::File appears to have crashed for this file, using ogginfo for it instead. Error: '.$err);
+			return GetInfo($File,true);
+		}
+		else
+		{
+			die($err);
+		}
+	};
+	if ($File =~ /mp3$/i)
+	{
+		$FileInfo{Ext} = 'mp3';
+	}
+	elsif($File =~ /ogg$/i)
+	{
+		$FileInfo{Ext} = 'ogg';
+	}
+	else
+	{
+		FatalError("Unknown filetype: $File\n");
+	}
+	return %FileInfo;
 }
 
 # Purpose: Retag an OGG file
@@ -241,59 +323,15 @@ sub GetInfo
 	# for MP3s
 	if (not $forceNoAudioFile and $hasAudioFile and $File =~ /ogg$/i)
 	{
-		eval {
-			local *STDERR;
-			# Audio::File outputs junk to STDERR we don't want, so temporarily redirect it
-			# to the black hole
-			open(STDERR,'>','/dev/null');
-			my $af = Audio::File->new($File);
-			eval { $FileInfo{Title} = CleanTag($af->tag->title) };
-			eval { $FileInfo{Band} = CleanTag($af->tag->artist) };
-			eval { $FileInfo{Album} = CleanTag($af->tag->album) };
-			eval { $FileInfo{Track} = CleanTag($af->tag->track) };
-			1;
-		} or do {
-			my $err = $@;
-			if(InPath('ogginfo'))
-			{
-				warn('Audio::File appears to have crashed for this file, using ogginfo for it instead. Error: '.$err);
-				return GetInfo($File,true);
-			}
-			else
-			{
-				die($err);
-			}
-		};
-		if ($File =~ /mp3$/i)
-		{
-			$FileInfo{Ext} = 'mp3';
-		}
-		elsif($File =~ /ogg$/i)
-		{
-			$FileInfo{Ext} = 'ogg';
-		}
-		else
-		{
-			FatalError("Unknown filetype: $File\n");
-		}
+		%FileInfo = GetInfoFromAudioFile($File);
 	}
 	elsif($File =~ /mp3$/i)
 	{
-		my $Info = GetMP3Info($File);
-		$FileInfo{Title} = CleanTag($Info->{TIT2});
-		$FileInfo{Band} = CleanTag($Info->{TPE1});
-		$FileInfo{Album} = CleanTag($Info->{TALB});
-		$FileInfo{Track} = CleanTag($Info->{TRCK});
-		$FileInfo{Ext} = 'mp3';
+		%FileInfo = GetMP3Info($File);
 	}
 	elsif ($File =~ /ogg$/i)
 	{
-		my $Info = GetOggVorbisInfo($File);
-		$FileInfo{Title} = CleanTag($Info->{TITLE});
-		$FileInfo{Band} = CleanTag($Info->{ARTIST});
-		$FileInfo{Album} = CleanTag($Info->{ALBUM});
-		$FileInfo{Track} = CleanTag($Info->{TRACKNUMBER});
-		$FileInfo{Ext} = 'ogg';
+		%FileInfo = GetOggVorbisInfo($File);
 	}
 	else
 	{
@@ -356,8 +394,9 @@ sub CleanTag
 	$Name =~ s/-+/-/g;
 	# Don't begin a file with .
 	$Name =~ s/^\.+//;
-	# Don't end a file with _ or -
+	# Don't end or begin a file with _ or -
 	$Name =~ s/(_|-)+$//;
+	$Name =~ s/^(_|-)+//;
 	# If we have more than 3 . after each other, force only three
 	$Name =~ s/\.\.\.\.+/.../g;
 	# Clean up non-ascii characters
