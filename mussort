@@ -27,13 +27,19 @@ use Cwd qw(realpath);
 use constant { true => 1, false => 0 };
 
 our $VERSION = 0.2;
+my %Has = (
+	'Audio::File' => 0,
+	'id3v2' => 0,
+	'id3info' => 0,
+	'ogginfo' => 0,
+);
 my $NeverRemove;
+my $PreferAudioFile = 0;
 my $RemoveLargest = 1;
 my $AllowSpecialChars;
 my $DirInsensitive;
 my $SilentSkip;
 my $AddInfoString;
-my $hasAudioFile;
 my $CompilationDetection;
 my %DirPreferance;
 
@@ -65,21 +71,21 @@ sub CheckDep
 {
 	my $cmd = shift;
 	my $alternate = shift;
+	my $warningOnly = shift;
 	if(not InPath($cmd))
 	{
+		my $debPackages = {
+				id3info => 'libid3-dev',
+				id3v2 => 'id3v2',
+				ogginfo => 'vorbis-tools',
+				'Audio::File' => 'libaudio-file-perl',
+			};
 		# Multi-dimensional hash mapping distro -> command -> package
 		my %DepToPackage = (
-			'/etc/apt/apt.conf.d/01ubuntu' => {
-				id3info => 'libid3-dev',
-				ogginfo => 'vorbis-tools',
-				'Audio::File' => 'libaudio-file-perl',
-			},
-			'/etc/debian_version' => {
-				ogginfo => 'vorbis-tools',
-				id3info => 'libid3-dev',
-				'Audio::File' => 'libaudio-file-perl',
-			}
+			'/etc/apt/apt.conf.d/01ubuntu' => $debPackages,
+			'/etc/debian_version' => $debPackages,
 		);
+		my $err;
 		foreach my $path (keys(%DepToPackage))
 		{
 			if (-e $path)
@@ -91,15 +97,33 @@ sub CheckDep
 					{
 						$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).\nIt can be found in the $DepToPackage{$path}{$alternate} package.";
 					}
-					FatalError($err);
 				}
 			}
 		}
-		my $err = "The command '$cmd' is missing. Please install it, then re-run mussort.";
-		if ($alternate)
+		if(not $err)
 		{
-			$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).";
+			$err = "The command '$cmd' is missing. Please install it, then re-run mussort.";
+			if ($alternate)
+			{
+				$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).";
+			}
 		}
+		if ($warningOnly)
+		{
+			$err =~ s/, then re-run mussort\.//g;
+			$err =~ s/Please install /For optimal file format support, please install /g;
+			$err .= ' (note that most files will still get sorted fine without it)';
+			warn('Warning: '.$err);
+			return false;
+		}
+		else
+		{
+			FatalError($err);
+		}
+	}
+	else
+	{
+		$Has{$cmd} = true;
 	}
 	return true;
 }
@@ -183,15 +207,85 @@ sub GetOggVorbisInfo
 		$FileInfo{Ext} = 'ogg';
 		return %FileInfo;
 	}
-	elsif ($hasAudioFile)
+	elsif ($Has{'Audio::File'})
 	{
 		return GetInfoFromAudioFile($InfoFile);
 	}
 }
 
-# Purpose: Get information about an mp3 file using id3info
+# Purpose: Get information about an mp3 file
 # Usage: my %Info = GetMP3Info(FILE);
 sub GetMP3Info
+{
+	my $InfoFile = shift;
+	my $hadInfo = false;
+	my $Information;
+	if ($Has{id3v2})
+	{
+		($hadInfo,$Information) = GetMP3Info_id3v2($InfoFile);
+	}
+
+	if(not $hadInfo and $Has{id3info})
+	{
+		($hadInfo,$Information) = GetMP3Info_id3info($InfoFile);
+	}
+
+	if ($hadInfo)
+	{
+		my %FileInfo;
+		$FileInfo{Title} = CleanTag($Information->{TIT2});
+		$FileInfo{Band} = CleanTag($Information->{TPE1});
+		$FileInfo{Album} = CleanTag($Information->{TALB});
+		$FileInfo{Track} = CleanTag($Information->{TRCK});
+		$FileInfo{Ext} = 'mp3';
+		return(%FileInfo);
+	}
+	elsif ($Has{'Audio::File'})
+	{
+		return GetInfoFromAudioFile($InfoFile);
+	}
+	return;
+}
+
+# Purpose: Get information about an mp3 file using id3v2
+# Usage: my ($hasInfo, $info) = GetMP3Info_id3v2(FILE);
+sub GetMP3Info_id3v2
+{
+	my $InfoFile = shift;
+	my %Information = (
+		TIT2 => 'Unknown',
+		TPE1 => 'Unknown',
+		TALB => 'Unknown',
+		TRCK => 'Unknown',
+	);
+	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3v2', '--list', $InfoFile) or FatalError("Unable to open2(): $!");
+	my $hadInfo = false;
+	while(<$Child_OUT>)
+	{
+		next if not /\):/;
+		chomp;
+		my $Opt = $_;
+		my $Val = $_;
+		$Opt =~ s/^(\w+)\s.*/$1/g;
+		$Val =~ s/^.+\):\s(.+)$/$1/g;
+		if($Val =~ /\S/)
+		{
+			if(not $Opt eq 'TRCK')
+			{
+				$hadInfo = true;
+			}
+			$Information{$Opt} = $Val;
+		}
+	}
+	close($Child_OUT);
+	close($Child_IN);
+	$Information{TRCK} =~ s#/.*##;
+	return($hadInfo,\%Information);
+}
+
+# Purpose: Get information about an mp3 file using id3info
+# Usage: my ($hasInfo, $info) = GetMP3Info_id3info(FILE);
+sub GetMP3Info_id3info
 {
 	my $InfoFile = shift;
 	my %Information = (
@@ -222,21 +316,7 @@ sub GetMP3Info
 	close($Child_OUT);
 	close($Child_IN);
 	$Information{TRCK} =~ s#/.*##;
-	if ($hadInfo)
-	{
-		my %FileInfo;
-		$FileInfo{Title} = CleanTag($Information{TIT2});
-		$FileInfo{Band} = CleanTag($Information{TPE1});
-		$FileInfo{Album} = CleanTag($Information{TALB});
-		$FileInfo{Track} = CleanTag($Information{TRCK});
-		$FileInfo{Ext} = 'mp3';
-		return(%FileInfo);
-	}
-	elsif ($hasAudioFile)
-	{
-		return GetInfoFromAudioFile($InfoFile);
-	}
-	return;
+	return($hadInfo,\%Information);
 }
 
 # Purpose: Get information about an audio file using Audio::File
@@ -321,7 +401,7 @@ sub GetInfo
 	my %FileInfo;
 	# We only use Audio::File for OGGs. id3info appears to be faster
 	# for MP3s
-	if (not $forceNoAudioFile and $hasAudioFile and $File =~ /ogg$/i)
+	if (not $forceNoAudioFile and $Has{'Audio::File'} and ($PreferAudioFile or $File =~ /ogg$/i))
 	{
 		%FileInfo = GetInfoFromAudioFile($File);
 	}
@@ -955,13 +1035,16 @@ sub main
 {
 	if(eval('use Audio::File;1;'))
 	{
-		$hasAudioFile = 1;
+		$Has{'Audio::File'} = 1;
+		# id3info isn't strictly required if we have Audio::File
+		CheckDep('id3info',undef,true);
 	}
 	else
 	{
 		CheckDep('ogginfo','Audio::File');
+		CheckDep('id3info');
 	}
-	CheckDep('id3info');
+	CheckDep('id3v2',undef,true);
 
 	if($NeverRemove)
 	{
@@ -989,10 +1072,12 @@ GetOptions (
 		PrintHelp('-n','--noremove','Never remove any files (overrides --largest)');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
 		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also a bit slower');
+		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags from all files (not just OGG vorbis)');
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		exit(0);
 	},
+	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
 	'n|noremove' => \$NeverRemove,
 	'l|largest' => \$RemoveLargest,
 	'i|insensitive' => \$DirInsensitive,
