@@ -165,12 +165,7 @@ sub GetOggVorbisInfo
 {
 	my $InfoFile = shift;
 	$InfoFile = realpath($InfoFile);
-	my %Information = (
-		TITLE => 'Unknown',
-		ARTIST => 'Unknown',
-		ALBUM => 'Unknown',
-		TRACKNUMBER => 'Unknown',
-	);
+	my %Information = ();
 	local *STDERR;
 	open(STDERR,'>','/dev/null');
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'ogginfo', $InfoFile) or FatalError("Unable to open2(): $!\n");
@@ -200,10 +195,10 @@ sub GetOggVorbisInfo
 	if ($hadInfo)
 	{
 		my %FileInfo;
-		$FileInfo{Title} = CleanTag($Information{TITLE});
-		$FileInfo{Band} = CleanTag($Information{ARTIST});
-		$FileInfo{Album} = CleanTag($Information{ALBUM});
-		$FileInfo{Track} = CleanTag($Information{TRACKNUMBER});
+		$FileInfo{Title} = getTag(\%Information,'title');
+		$FileInfo{Band} = getTag(\%Information,'artist');
+		$FileInfo{Album} = getTag(\%Information,'album');
+		$FileInfo{Track} = getTag(\%Information,'track');
 		$FileInfo{Ext} = 'ogg';
 		return %FileInfo;
 	}
@@ -233,10 +228,10 @@ sub GetMP3Info
 	if ($hadInfo)
 	{
 		my %FileInfo;
-		$FileInfo{Title} = CleanTag($Information->{TIT2});
-		$FileInfo{Band} = CleanTag($Information->{TPE1});
-		$FileInfo{Album} = CleanTag($Information->{TALB});
-		$FileInfo{Track} = CleanTag($Information->{TRCK});
+		$FileInfo{Title} = getTag($Information,'title');
+		$FileInfo{Band} = getTag($Information,'artist');
+		$FileInfo{Album} = getTag($Information,'album');
+		$FileInfo{Track} = getTag($Information,'track');
 		$FileInfo{Ext} = 'mp3';
 		return(%FileInfo);
 	}
@@ -247,17 +242,45 @@ sub GetMP3Info
 	return;
 }
 
+# Purpose: Fetch tag values from extracted data
+# Usage: value = getTag(infoHashRef, tagName);
+sub getTag
+{
+	my $info = shift;
+	my $tag = shift;
+	my %possibleTags = (
+		title => [ 'TIT2','TT2','TITLE' ],
+		artist => [ 'TPE1','TP1','ARTIST' ],
+		album => [ 'TALB','TAL','ALBUM' ],
+		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK' ],
+	);
+	if(not defined $possibleTags{$tag})
+	{
+		warn("Tried to fetch tag '$tag', but it wasn't found in possibleTags");
+		return;
+	}
+	my $content = 'Unknown';
+	foreach my $possible (@{$possibleTags{$tag}})
+	{
+		if(defined $info->{$possible} and length($info->{$possible}) and not $info->{$possible} eq 'Unknown')
+		{
+			$content = $info->{$possible};
+			last;
+		}
+	}
+	if ($tag eq 'track')
+	{
+		$content =~ s{/.*}{}g;
+	}
+	return CleanTag($content);
+}
+
 # Purpose: Get information about an mp3 file using id3v2
 # Usage: my ($hasInfo, $info) = GetMP3Info_id3v2(FILE);
 sub GetMP3Info_id3v2
 {
 	my $InfoFile = shift;
-	my %Information = (
-		TIT2 => 'Unknown',
-		TPE1 => 'Unknown',
-		TALB => 'Unknown',
-		TRCK => 'Unknown',
-	);
+	my %Information = ();
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3v2', '--list', $InfoFile) or FatalError("Unable to open2(): $!");
 	my $hadInfo = false;
 	while(<$Child_OUT>)
@@ -279,7 +302,6 @@ sub GetMP3Info_id3v2
 	}
 	close($Child_OUT);
 	close($Child_IN);
-	$Information{TRCK} =~ s#/.*##;
 	return($hadInfo,\%Information);
 }
 
@@ -288,12 +310,7 @@ sub GetMP3Info_id3v2
 sub GetMP3Info_id3info
 {
 	my $InfoFile = shift;
-	my %Information = (
-		TIT2 => 'Unknown',
-		TPE1 => 'Unknown',
-		TALB => 'Unknown',
-		TRCK => 'Unknown',
-	);
+	my %Information = ();
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3info', $InfoFile) or FatalError("Unable to open2(): $!");
 	my $hadInfo = false;
 	while(<$Child_OUT>)
@@ -306,7 +323,7 @@ sub GetMP3Info_id3info
 		$Val =~ s/^.+\):\s(.+)$/$1/g;
 		if($Val =~ /\S/)
 		{
-			if(not $Opt eq 'TRCK')
+			if(not $Opt =~ /^TRC?K$/)
 			{
 				$hadInfo = true;
 			}
