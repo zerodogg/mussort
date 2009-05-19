@@ -112,7 +112,7 @@ sub CheckDep
 		{
 			$err =~ s/, then re-run mussort\.//g;
 			$err =~ s/Please install /For optimal file format support, please install /g;
-			$err .= ' (note that most files will still get sorted fine without it)';
+			$err .= ' (note that most files will still get sorted fine without it)'."\n";
 			warn('Warning: '.$err);
 			return false;
 		}
