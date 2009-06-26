@@ -84,6 +84,16 @@ sub CheckDep
 		my %DepToPackage = (
 			'/etc/apt/apt.conf.d/01ubuntu' => $debPackages,
 			'/etc/debian_version' => $debPackages,
+			'/etc/mandriva-release' => {
+				ogginfo => 'vorbis-tools',
+				id3info => 'id3lib',
+				id3v2 => 'id3v2',
+			},
+			'/etc/fedora-release' => {
+				ogginfo => 'vorbis-tools',
+				id3info => 'id3lib',
+				id3v2 => 'id3v2',
+			},
 		);
 		my $err;
 		foreach my $path (keys(%DepToPackage))
@@ -92,10 +102,14 @@ sub CheckDep
 			{
 				if ($DepToPackage{$path}{$cmd})
 				{
-					my $err = "The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.";
+					$err = "The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.";
 					if ($alternate)
 					{
-						$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).\nIt can be found in the $DepToPackage{$path}{$alternate} package.";
+						$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).";
+						if ($DepToPackage{$path}{$alternate})
+						{
+							$err .= "\nIt can be found in the $DepToPackage{$path}{$alternate} package.";
+						}
 					}
 				}
 			}
@@ -332,7 +346,6 @@ sub GetMP3Info_id3info
 	}
 	close($Child_OUT);
 	close($Child_IN);
-	$Information{TRCK} =~ s#/.*##;
 	return($hadInfo,\%Information);
 }
 
