@@ -1168,7 +1168,7 @@ sub debugInfo
 	printf($format,'mussort version',$VERSION);
 
 	# Get ogginfo/i3info versions
-	my($id3ver,$oggver) = ('missing','missing');
+	my($id3ver,$id3v2ver,$oggver) = ('missing','missing','missing');
 
 	if(InPath('id3info'))
 	{
@@ -1191,8 +1191,17 @@ sub debugInfo
 		chomp($oggver);
 	}
 
+	if(InPath('id3v2'))
+	{
+		open3(my $in, my $out,my $err, 'id3v2','--version');
+		$id3v2ver = <$out>;
+		$id3v2ver =~ s/^\s*id3v2\s*//;
+		chomp($id3v2ver);
+	}
+
 	printf($format,'ogginfo version',$oggver);
 	printf($format,'id3info version',$id3ver);
+	printf($format,'id3v2 version',$id3v2ver);
 	if(eval('use Audio::File;1;'))
 	{
 		printf($format,'Audio::File',$Audio::File::VERSION);
