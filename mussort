@@ -21,16 +21,20 @@ use File::Find;
 use File::Basename qw(dirname basename);
 use File::Path qw(mkpath rmtree);
 use File::Copy;
+use File::stat;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
+use Storable;
 use constant { 
 	true => 1, 
-	false => 0 ,
+	false => 0,
 
+	# Verbosity levels
 	M_STANDARD => 1,
 	M_VERBOSE => 2,
 	M_VERYVERBOSE => 3,
+	M_DEBUG => 4,
 };
 
 our $VERSION = 0.2;
@@ -41,15 +45,16 @@ my %Has = (
 	'ogginfo' => 0,
 );
 my $NeverRemove;
-my $PreferAudioFile = 0;
+my $PreferAudioFile = false;
 my $verbosity = 1;
-my $RemoveLargest = 1;
+my $RemoveLargest = true;
 my $AllowSpecialChars;
 my $DirInsensitive;
 my $SilentSkip;
-my $AddInfoString;
 my $CompilationDetection;
+my $cacheFile;
 my %DirPreferance;
+my %cachedInfo;
 
 # This makes sure the children are slayed properly
 $SIG{CHLD} = sub {
@@ -298,6 +303,134 @@ sub getTag
 	return CleanTag($content);
 }
 
+# Purpose: Get information from cache if caching is enabled
+# Usage: %info = getInfoFromCache(FILE);
+sub getInfoFromCache
+{
+	my $file = shift;
+	if(defined $cacheFile)
+	{
+		if(defined($cachedInfo{info}->{$file}))
+		{
+			my $currentStat = stat($file)->mtime;
+			if ($currentStat <= $cachedInfo{mtime}->{$file})
+			{
+				return $cachedInfo{info}->{$file};
+			}
+		}
+	}
+	return;
+}
+
+# Purpose: Add information to the cache if caching is enabled
+# Usage: addToCache($file,\%info);
+sub addToCache
+{
+	my $file = shift;
+	my $info = shift;
+
+	if(defined $cachedInfo{info} && defined $cachedInfo{info}->{$file})
+	{
+		my $fstat = stat($file);
+		if ($cachedInfo{mtime}->{$file} >= $fstat->mtime)
+		{
+			return;
+		}
+		else
+		{
+			printv(M_DEBUG,'Re-evaluating cached information for '.$file."\n");
+		}
+	}
+
+	if(not defined $cachedInfo{info})
+	{
+		$cachedInfo{info} = {};
+	}
+	if(not defined $cachedInfo{mtime})
+	{
+		$cachedInfo{mtime} = {};
+	}
+
+	$cachedInfo{info}->{$file} = $info;
+	my $fileinfo = stat($file);
+	if(not $fileinfo)
+	{
+		printv(M_VERYVERBOSE,'Failed to stat() '.$fileinfo.' - skipping adding it to the cache'."\n");
+		delete($cachedInfo{info}->{$file});
+	}
+	else
+	{
+		$cachedInfo{mtime}->{$file} = $fileinfo->mtime;
+	}
+}
+
+# Purpose: Rename a file in the cache
+# Usage: cacheRename($oldName,$newName);
+sub cacheRename
+{
+	my $oldFile = shift;
+	if(not defined $cachedInfo{info} or not defined $cachedInfo{info}->{$oldFile})
+	{
+		return;
+	}
+	my $newFile = shift;
+	addToCache($newFile,$cachedInfo{info}->{$oldFile});
+	delete($cachedInfo{mtime}->{$oldFile});
+	delete($cachedInfo{mtime}->{$newFile});
+}
+
+# Purpose: Load cached information
+# Usage: loadCache();
+sub loadCache
+{
+	printv(M_DEBUG,'Caching is enabled'."\n");
+	if(not defined $ENV{HOME})
+	{
+		die('The environment variable HOME is not set. Unable to continue. Either set HOME, supply an absolute path to --cache or disable --cache'."\n");
+	}
+	$cacheFile = $ENV{HOME}.'/.mussort-cache';
+	if (-e $cacheFile)
+	{
+		my $iFile = $cacheFile;
+		$iFile =~ s{^$ENV{HOME}/*}{~};
+		printv(M_STANDARD,'Using cache from '.$cacheFile."\n");
+		my $info = retrieve($cacheFile) or FatalError('Failed to retrieve() cache from '.$cacheFile.': '.$!);
+		if ($info && ref($info) eq 'HASH')
+		{
+			printv(M_DEBUG,"Read cached information\n");
+			%cachedInfo = %{$info};
+		}
+		elsif(ref($info))
+		{
+			FatalError('retrieve() returned a useless reference of type: '.ref($info).' - try to disable --cache'."\n");
+		}
+	}
+}
+
+# Purpose: Write the cache if there is data in it
+# Usage: writeCache();
+sub writeCache
+{
+	if(defined($cachedInfo{info}) && keys(%{$cachedInfo{info}}))
+	{
+		my $had = 1;
+		if (-e $cacheFile)
+		{
+			printv(M_VERBOSE,'Writing updated cache to '.$cacheFile."\n");
+		}
+		else
+		{
+			$had = 0;
+			printv(M_STANDARD,'Writing cache file '.$cacheFile.'...');
+		}
+		store(\%cachedInfo,$cacheFile) or FatalError('Failed to store() cache in '.$cacheFile.': '.$!);
+		if(not $had)
+		{
+			printv(M_STANDARD,'done'."\n");
+		}
+	}
+}
+
 # Purpose: Get information about an mp3 file using id3v2
 # Usage: my ($hasInfo, $info) = GetMP3Info_id3v2(FILE);
 sub GetMP3Info_id3v2
@@ -402,60 +535,42 @@ sub GetInfoFromAudioFile
 	return %FileInfo;
 }
 
-# Purpose: Retag an OGG file
-# Usage: ReTag_ogg(tag,file)
-sub ReTag_ogg
-{
-	my $tag = shift;
-	my $file = shift;
-	# It's not a dep, just used if available
-	if(not InPath('vorbiscomment'))
-	{
-		return;
-	}
-	return system('vorbiscomment','-a',$file,'-t',$tag);
-}
-
-# Purpose: Retag an MP3 file
-# Usage: ReTag_mp3(tag,file)
-sub ReTag_mp3
-{
-	my $tag = shift;
-	my $file = shift;
-	# It's not a dep, just used if available
-	if(not InPath('id3tag'))
-	{
-		return;
-	}
-	return system('id3tag',$tag,$file);
-}
-
 # Purpose: Get information about a file
 # Usage: $FileInfo = GetInfo(pathtofile);
 sub GetInfo
 {
-	$AddInfoString = undef;
 	my $File = shift;
 	my $forceNoAudioFile = shift;
 	my %FileInfo;
 	# We only use Audio::File for OGGs. id3info appears to be faster
 	# for MP3s
-	if (not $forceNoAudioFile and $Has{'Audio::File'} and ($PreferAudioFile or $File =~ /ogg$/i))
+	if(my $info = getInfoFromCache($File))
 	{
-		%FileInfo = GetInfoFromAudioFile($File);
-	}
-	elsif($File =~ /mp3$/i)
-	{
-		%FileInfo = GetMP3Info($File);
-	}
-	elsif ($File =~ /ogg$/i)
-	{
-		%FileInfo = GetOggVorbisInfo($File);
+		printv(M_DEBUG,'Using cached information for '.$File."\n");
+		%FileInfo = %{$info};
 	}
 	else
 	{
-		FatalError("Unknown filetype: $File\n");
+		printv(M_VERYVERBOSE,'Reading information about file: '.$File."\n");
+		if (not $forceNoAudioFile and $Has{'Audio::File'} and ($PreferAudioFile or $File =~ /ogg$/i))
+		{
+			%FileInfo = GetInfoFromAudioFile($File);
+		}
+		elsif($File =~ /mp3$/i)
+		{
+			%FileInfo = GetMP3Info($File);
+		}
+		elsif ($File =~ /ogg$/i)
+		{
+			%FileInfo = GetOggVorbisInfo($File);
+		}
+		else
+		{
+			FatalError("Unknown filetype: $File\n");
+		}
 	}
+
+	addToCache($File,\%FileInfo);
 
 	if ($CompilationDetection and defined $FileInfo{Album})
 	{
@@ -473,21 +588,6 @@ sub GetInfo
 		if ($Track =~ s/^(\d+).*$/$1/)
 		{
 			$FileInfo{Track} = $Track;
-#			my $r;
-#			# Retag
-#			if ($FileInfo{Ext} eq 'ogg')
-#			{
-#				$r = ReTag_ogg("tracknumber=$Track",$File);
-#			}
-#			elsif($FileInfo{Ext} eq 'mp3')
-#			{
-#				$r = ReTag_mp3("-t$Track",$File);
-#			}
-#			# Additional info
-#			if(defined($r))
-#			{
-#				$AddInfoString = 'Added track tag to ';
-#			}
 		}
 	}
 	return(\%FileInfo);
@@ -747,10 +847,7 @@ sub RenameFile
 	# Output info and do the actual renaming
 	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
-	if ($AddInfoString)
-	{
-		printv(M_STANDARD,' '.$AddInfoString.$OutputNewName."\n");
-	}
+	cacheRename($OrigFile,$NewFile);
 }
 
 # Purpose: Queue a file for renaming
@@ -805,7 +902,6 @@ sub ProcessFile
 	return if not $File =~ /\.(ogg|mp3)$/gi;
 	# It might be a dangling symlink, if it is then just silently skip it
 	return if not -e $File;
-	printv(M_VERYVERBOSE,'Reading information about file: '.$File."\n");
 	my($NewName,$NewDir) = getNewFilePath($File,$BaseDir);
 	return if not defined $NewName or not defined $NewDir;
 	if ($CompilationDetection)
@@ -900,7 +996,7 @@ sub ProcessCompilation
 			# Build a new filename for the music file
 			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
 			next if not defined $NewDir or not defined $NewName;
-			RenameFile($File,"$NewDir/$NewName",$BaseDir);
+			RenameFile($File,$NewDir.'/'.$NewName,$BaseDir);
 			RemoveIfEmpty(dirname($File));
 		}
 	}
@@ -908,7 +1004,7 @@ sub ProcessCompilation
 	# Finally, rename those left in fileMap
 	if ($CompilationDetection->{fileMap})
 	{
-		foreach my $file (keys %{$CompilationDetection->{fileMap}})
+		foreach my $file (sort keys %{$CompilationDetection->{fileMap}})
 		{
 			RenameFile($file,
 				$CompilationDetection->{fileMap}->{$file}->{newFile},
@@ -1079,6 +1175,10 @@ sub printv
 	{
 		return;
 	}
+	if ($level == M_DEBUG)
+	{
+		print 'Debug: ';
+	}
 	print $_[0];
 }
 
@@ -1110,17 +1210,33 @@ sub main
 		$RemoveLargest = 0;
 	}
 
+	# This only gets printed if debug output actually IS enabled.
+	printv(M_DEBUG,"Debug output is enabled\n");
+
 	if(not (@ARGV))
 	{
 		FatalError('Requires one option: the directory to process. See --help for more information');
+	}
+	if(defined($cacheFile))
+	{
+		loadCache();
+	}
+	else
+	{
+		printv(M_DEBUG,"Cache file did not exist - not loading\n");
 	}
 	foreach(@ARGV)
 	{
 		ProcessTree($_);
 	}
+	if (defined $cacheFile)
+	{
+		writeCache();
+	}
 	exit(0);
 }
 
+Getopt::Long::Configure ('bundling');
 GetOptions (
 	'help|h' => sub {
 		print "mussort version $VERSION\n\n";
@@ -1135,6 +1251,7 @@ GetOptions (
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
+		PrintHelp('-e','--cache','Enable file information caching');
 		PrintHelp('','--quiet','Suppress all non-error messages');
 		exit(0);
 	},
@@ -1145,6 +1262,7 @@ GetOptions (
 	'a|allowspecial' => \$AllowSpecialChars,
 	'debuginfo' => \&debugInfo,
 	'c|compilation' => sub { $CompilationDetection = {} },
+	'e|cache' => \$cacheFile,
 	'v|verbose+' => \$verbosity,
 	'q|quiet' => sub { $verbosity = 0 },
 	'version' => sub {
@@ -1251,12 +1369,29 @@ being read.
 Suppresses all status messages (and the terminal title). Errors will still get
 printed.
 
+=item B<-e, --cache>
+
+Enables caching of file information. This can greatly improve the runtime speed
+of mussort, as it will cache information between runs. Cached information gets
+re-read if the file has been modified since the cache was created.
+
 =back
 
 =head1 DEPENDENCIES
 
 It needs id3info from id3lib and either the perl module Audio::File (fastest) or
 ogginfo from vorbis-tools (slower) to get file information.
+
+=head1 FILES
+
+=over
+
+=item ~/.mussort-cache
+
+The mussort file information cache. Only created when --cache is used.
+You can safely remove this file any time if you want to.
+
+=back
 
 =head1 BUGS AND LIMITATIONS
 

@@ -9,6 +9,8 @@ Version 0.2
 - Now sets the terminal title
 - Better support for later versions of id3 information utils
 - Added --verbose and --quiet
+- Added --cache - significantly speeds up subsequent runs on large
+	collections
 
 Version 0.1
 - Initial public release
