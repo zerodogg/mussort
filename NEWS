@@ -11,6 +11,7 @@ Version 0.2
 - Added --verbose and --quiet
 - Added --cache - significantly speeds up subsequent runs on large
 	collections
+- Major optimizations
 
 Version 0.1
 - Initial public release

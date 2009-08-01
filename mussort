@@ -34,6 +34,10 @@ use constant {
 	M_VERBOSE => 2,
 	M_VERYVERBOSE => 3,
 	M_DEBUG => 4,
+
+	# Directory types, used for getDirectoriesIn()
+	DIR_TYPE_PRIMARY => 1,
+	DIR_TYPE_SECONDARY => 2,
 };
 
 our $VERSION = 0.2;
@@ -54,6 +58,7 @@ my $CompilationDetection;
 my $cacheFile;
 my %DirPreferance;
 my %cachedInfo;
+my @dirInfoCache;
 
 # This makes sure the children are slayed properly
 $SIG{CHLD} = sub {
@@ -684,6 +689,44 @@ sub IsInvalidTagValue
 	return false;
 }
 
+# Purpose: Get a list of directories in a directory - possibly cached
+# Usage: array = getDirectoriesIn(directory,type);
+sub getDirectoriesIn
+{
+	my $dir = shift;
+	my $type = shift;
+
+	if(not defined $dir or not defined $type)
+	{
+		die;
+	}
+
+	if(not defined $dirInfoCache[$type])
+	{
+		$dirInfoCache[$type] = {};
+	}
+
+	if(defined $dirInfoCache[$type]->{$dir})
+	{
+		return @{$dirInfoCache[$type]->{$dir}};
+	}
+
+	if(not $type eq DIR_TYPE_PRIMARY)
+	{
+		$dirInfoCache[$type] = {};
+	}
+
+	$dirInfoCache[$type]->{$dir} = [];
+
+	opendir(my $dirHandle,$dir);
+	foreach(sort(readdir($dirHandle)))
+	{
+		next if not -d $_;
+		push(@{$dirInfoCache[$type]->{$dir}},$_);
+	}
+	return @{$dirInfoCache[$type]->{$dir}};
+}
+
 # Purpose: Get the new directory path for the file
 # Usage: my $NewDirName = GetNewDirName(InfoHash);
 sub GetNewDirName
@@ -731,10 +774,9 @@ sub GetNewDirName
 		}
 		else
 		{
-			opendir(my $FirstDirHandle,$BaseDir);
-			foreach(sort(readdir($FirstDirHandle)))
+			my @dirList = getDirectoriesIn($BaseDir,DIR_TYPE_PRIMARY);
+			foreach(@dirList)
 			{
-				next if not -d $_;
 				if(/^\Q$FirstDir\E/i)
 				{
 					$FirstDir = $_;
@@ -753,13 +795,11 @@ sub GetNewDirName
 					}
 				}
 			}
-			close($FirstDirHandle);
 			if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
 			{
-				opendir(my $SecondDirHandle,"$BaseDir/$FirstDir");
-				foreach(sort(readdir($SecondDirHandle)))
+				@dirList = getDirectoriesIn($BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
+				foreach(@dirList)
 				{
-					next if not -d $_;
 					if(/^\Q$SecondDir\E$/i)
 					{
 						$SecondDir = $_;
@@ -778,7 +818,6 @@ sub GetNewDirName
 						}
 					}
 				}
-				close($SecondDirHandle);
 			}
 			$DirPreferance{$lowerFirst} = $FirstDir;
 			if(defined $lowerSecond and length $lowerSecond)
