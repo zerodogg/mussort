@@ -24,7 +24,14 @@ use File::Copy;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
-use constant { true => 1, false => 0 };
+use constant { 
+	true => 1, 
+	false => 0 ,
+
+	M_STANDARD => 1,
+	M_VERBOSE => 2,
+	M_VERYVERBOSE => 3,
+};
 
 our $VERSION = 0.2;
 my %Has = (
@@ -35,6 +42,7 @@ my %Has = (
 );
 my $NeverRemove;
 my $PreferAudioFile = 0;
+my $verbosity = 1;
 my $RemoveLargest = 1;
 my $AllowSpecialChars;
 my $DirInsensitive;
@@ -53,6 +61,7 @@ $SIG{CHLD} = sub {
 # Usage: setTermTitle(TITLE);
 sub setTermTitle
 {
+	return if not $verbosity > 0;
 	return if not defined $ENV{TERM};
 	my $title = shift;
 	if ($ENV{TERM} =~ /screen/)
@@ -464,21 +473,21 @@ sub GetInfo
 		if ($Track =~ s/^(\d+).*$/$1/)
 		{
 			$FileInfo{Track} = $Track;
-			my $r;
-			# Retag
-			if ($FileInfo{Ext} eq 'ogg')
-			{
-				$r = ReTag_ogg("tracknumber=$Track",$File);
-			}
-			elsif($FileInfo{Ext} eq 'mp3')
-			{
-				$r = ReTag_mp3("-t$Track",$File);
-			}
-			# Additional info
-			if(defined($r))
-			{
-				$AddInfoString = 'Added track tag to ';
-			}
+#			my $r;
+#			# Retag
+#			if ($FileInfo{Ext} eq 'ogg')
+#			{
+#				$r = ReTag_ogg("tracknumber=$Track",$File);
+#			}
+#			elsif($FileInfo{Ext} eq 'mp3')
+#			{
+#				$r = ReTag_mp3("-t$Track",$File);
+#			}
+#			# Additional info
+#			if(defined($r))
+#			{
+#				$AddInfoString = 'Added track tag to ';
+#			}
 		}
 	}
 	return(\%FileInfo);
@@ -730,17 +739,17 @@ sub RenameFile
 		{
 			return if not $RemoveLargest;
 			return if $NeverRemove;
-			print "Remove: $OrigFile\n";
+			printv(M_STANDARD,"Remove: $OrigFile\n");
 			unlink($OrigFile);
 			return;
 		}
 	}
 	# Output info and do the actual renaming
-	print "Rename: $OutputOldName -> $OutputNewName\n";
+	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 	if ($AddInfoString)
 	{
-		print ' '.$AddInfoString.$OutputNewName."\n";
+		printv(M_STANDARD,' '.$AddInfoString.$OutputNewName."\n");
 	}
 }
 
@@ -778,7 +787,7 @@ sub RemoveIfEmpty
 	}
 	if($Removed)
 	{
-		print "Removed: $Removed\n";
+		printv(M_STANDARD,"Removed: $Removed\n");
 	}
 }
 
@@ -788,10 +797,15 @@ sub ProcessFile
 {
 	my $File = shift;
 	my $BaseDir = shift;
-	return if -d $File;
+	if (-d $File)
+	{
+		printv(M_VERBOSE,'Searching through directory '.$File."\n");
+		return;
+	}
 	return if not $File =~ /\.(ogg|mp3)$/gi;
 	# It might be a dangling symlink, if it is then just silently skip it
 	return if not -e $File;
+	printv(M_VERYVERBOSE,'Reading information about file: '.$File."\n");
 	my($NewName,$NewDir) = getNewFilePath($File,$BaseDir);
 	return if not defined $NewName or not defined $NewDir;
 	if ($CompilationDetection)
@@ -819,7 +833,7 @@ sub getNewFilePath
 	{
 		if(not $SilentSkip)
 		{
-			print "Skipped: $File\n";
+			printv(M_STANDARD,"Skipped: $File\n");
 		}
 		return;
 	}
@@ -838,6 +852,7 @@ sub ProcessCompilation
 	my $compilationAlbums = [];
 	my @compilationRename;
 
+	printv(M_VERBOSE,'Detecting compilation albums...');
 	foreach my $album (keys(%{$CompilationDetection->{album}}))
 	{
 		next if IsInvalidTagValue($album);
@@ -874,7 +889,23 @@ sub ProcessCompilation
 			});
 	}
 
-	# First, rename those left in fileMap
+	printv(M_VERBOSE,"done\n");
+
+	foreach my $compilationRef (@compilationRename)
+	{
+		my $compilation = $compilationRef->{files};
+		printv(M_STANDARD,"Detected compilation album: $compilationRef->{album}\n");
+		foreach my $File (@{$compilation})
+		{
+			# Build a new filename for the music file
+			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
+			next if not defined $NewDir or not defined $NewName;
+			RenameFile($File,"$NewDir/$NewName",$BaseDir);
+			RemoveIfEmpty(dirname($File));
+		}
+	}
+
+	# Finally, rename those left in fileMap
 	if ($CompilationDetection->{fileMap})
 	{
 		foreach my $file (keys %{$CompilationDetection->{fileMap}})
@@ -883,20 +914,6 @@ sub ProcessCompilation
 				$CompilationDetection->{fileMap}->{$file}->{newFile},
 				$CompilationDetection->{fileMap}->{$file}->{baseDir},
 			);
-		}
-	}
-
-	foreach my $compilationRef (@compilationRename)
-	{
-		my $compilation = $compilationRef->{files};
-		print "Detected compilation album: $compilationRef->{album}\n";
-		foreach my $File (@{$compilation})
-		{
-			# Build a new filename for the music file
-			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
-			next if not defined $NewDir or not defined $NewName;
-			RenameFile($File,"$NewDir/$NewName",$BaseDir);
-			RemoveIfEmpty(dirname($File));
 		}
 	}
 
@@ -927,7 +944,7 @@ sub ProcessTree
 	setTermTitle('mussort ['.$Dir.']');
 	$Dir = realpath($Dir);
 
-	print "Processing: $Dir\n";
+	printv(M_STANDARD,"Processing: $Dir\n");
 	find({
 			wanted => sub { ProcessFile($File::Find::name,$Dir); },
 			preprocess => sub { return sort sortFiles	@_ },
@@ -1053,6 +1070,18 @@ sub PrintHelp
 	return true;
 }
 
+# Purpose: Print a message if verbosity level matches
+# Usage: printv(VERBOSITY_LEVEL,message);
+sub printv
+{
+	my $level = shift;
+	if ($level > $verbosity)
+	{
+		return;
+	}
+	print $_[0];
+}
+
 # Purpose: Check for a file in path
 # Usage: InPath(FILE)
 sub InPath
@@ -1105,6 +1134,8 @@ GetOptions (
 		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags from all files (not just OGG vorbis)');
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
+		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
+		PrintHelp('','--quiet','Suppress all non-error messages');
 		exit(0);
 	},
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
@@ -1114,6 +1145,8 @@ GetOptions (
 	'a|allowspecial' => \$AllowSpecialChars,
 	'debuginfo' => \&debugInfo,
 	'c|compilation' => sub { $CompilationDetection = {} },
+	'v|verbose+' => \$verbosity,
+	'q|quiet' => sub { $verbosity = 0 },
 	'version' => sub {
 		print "mussort version $VERSION\n";
 		exit(0);
@@ -1201,6 +1234,22 @@ through all files before it can start to rename them.
 
 Makes mussort not output messages about files that it skips (those that are skipped
 are generally badly tagged, or not tagged at all).
+
+=item B<-v, --verbose>
+
+Increases the verbosity of mussort. Supply twice to further increase verbosity.
+
+If supplied once, extra information about what mussort is doing, such as which
+directory is being processed, will be output (this can be useful in --compilation
+mode, as --compilation won't output anything until after all files have been read).
+
+If supplied twice, it will also output information about which file is currently
+being read.
+
+=item B<--quiet>
+
+Suppresses all status messages (and the terminal title). Errors will still get
+printed.
 
 =back
 

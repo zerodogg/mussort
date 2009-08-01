@@ -8,6 +8,7 @@ Version 0.2
 	compilation albums and sort those properly as well
 - Now sets the terminal title
 - Better support for later versions of id3 information utils
+- Added --verbose and --quiet
 
 Version 0.1
 - Initial public release
