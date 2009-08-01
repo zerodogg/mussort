@@ -362,7 +362,7 @@ sub getInfoFromCache
 	my $file = shift;
 	if(defined $cacheFile)
 	{
-		if(defined($cachedInfo{info}->{$file}))
+		if(defined($cachedInfo{mtime}->{$file}))
 		{
 			if (mtime($file) <= $cachedInfo{mtime}->{$file})
 			{
@@ -380,7 +380,7 @@ sub addToCache
 	my $file = shift;
 	my $info = shift;
 
-	if(defined $cachedInfo{info} && defined $cachedInfo{info}->{$file})
+	if(defined $cachedInfo{mtime} && defined $cachedInfo{mtime}->{$file})
 	{
 		if ($cachedInfo{mtime}->{$file} >= mtime($file))
 		{
