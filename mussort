@@ -19,7 +19,7 @@ use strict;
 use warnings;
 use File::Find;
 use File::Basename qw(dirname basename);
-use File::Path qw(mkpath rmtree);
+use File::Path qw(rmtree);
 use File::Copy;
 use Getopt::Long;
 use IPC::Open2;
@@ -85,12 +85,50 @@ sub setTermTitle
 
 # Purpose: Returns the mtime of a file
 # Usage: $mtime = mtime(file);
+# Note: It returns zero (not undef) if it can't read the mtime
 sub mtime
 {
 	my $file = shift;
 	my $mtime;
 	(undef,undef,undef,undef,undef,undef,undef,undef,undef,$mtime,undef,undef,undef) = stat($file);
+	if(not defined $mtime)
+	{
+		printv(M_DEBUG,'Failed to read mtime from file '.$file."\n");
+		return 0;
+	}
 	return $mtime;
+}
+
+# Purpose: Internal mkpath() that also modifies the directory cache
+# Usage: intMkpath(/path/to/create);
+sub intMkpath
+{
+	my $fullpath = shift;
+	if (-d $fullpath)
+	{
+		return;
+	}
+	my @pathsToCreate;
+	$fullpath=~ s{/+$}{};
+	while(not -d $fullpath)
+	{
+		unshift(@pathsToCreate,$fullpath);
+		$fullpath = dirname($fullpath);
+	}
+
+	foreach my $dir (@pathsToCreate)
+	{
+		mkdir($dir) or die('Failed to mkdir('.$dir.'): '.$!);
+		my $parent = dirname($dir);
+		foreach my $type (DIR_TYPE_PRIMARY,DIR_TYPE_SECONDARY)
+		{
+			if(defined $dirInfoCache[$type]->{$parent})
+			{
+				push(@{$dirInfoCache[$type]->{$parent}},basename($dir));
+				@{$dirInfoCache[$type]->{$parent}} = sort(@{$dirInfoCache[$type]->{$parent}});
+			}
+		}
+	}
 }
 
 # Purpose: Check for a dependency
@@ -719,11 +757,12 @@ sub getDirectoriesIn
 	$dirInfoCache[$type]->{$dir} = [];
 
 	opendir(my $dirHandle,$dir);
-	foreach(sort(readdir($dirHandle)))
+	foreach(readdir($dirHandle))
 	{
 		next if not -d $_;
 		push(@{$dirInfoCache[$type]->{$dir}},$_);
 	}
+	@{$dirInfoCache[$type]->{$dir}} = sort(@{$dirInfoCache[$type]->{$dir}});
 	return @{$dirInfoCache[$type]->{$dir}};
 }
 
@@ -870,12 +909,12 @@ sub RenameFile
 	}
 	# Create the dir
 	eval { 
-		mkpath(dirname($NewFile));
+		intMkpath(dirname($NewFile));
 		1;
 	} 
 		or do
 	{
-		FatalError('Failed to mkpath ' . dirname($NewFile) . ": $@\nWas processing $OrigFile");
+		FatalError('Failed to create path' . dirname($NewFile) . ": $@\nWas processing $OrigFile");
 	};
 	# Check if the file already exists
 	if(-e $NewFile)
