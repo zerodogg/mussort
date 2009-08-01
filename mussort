@@ -56,6 +56,7 @@ my $DirInsensitive;
 my $SilentSkip;
 my $CompilationDetection;
 my $cacheFile;
+my $cleanTree;
 my %DirPreferance;
 my %cachedInfo;
 my @dirInfoCache;
@@ -754,16 +755,16 @@ sub getDirectoriesIn
 		$dirInfoCache[$type] = {};
 	}
 
-	$dirInfoCache[$type]->{$dir} = [];
-
 	opendir(my $dirHandle,$dir);
+	my @dirs;
 	foreach(readdir($dirHandle))
 	{
 		next if not -d $_;
-		push(@{$dirInfoCache[$type]->{$dir}},$_);
+		push(@dirs,$_);
 	}
-	@{$dirInfoCache[$type]->{$dir}} = sort(@{$dirInfoCache[$type]->{$dir}});
-	return @{$dirInfoCache[$type]->{$dir}};
+	@dirs = sort(@dirs);
+	$dirInfoCache[$type]->{$dir} = \@dirs;
+	return @dirs;
 }
 
 # Purpose: Get the new directory path for the file
@@ -814,14 +815,16 @@ sub GetNewDirName
 		else
 		{
 			my @dirList = getDirectoriesIn($BaseDir,DIR_TYPE_PRIMARY);
+			my $alternateFirst;
 			foreach(@dirList)
 			{
 				if(/^\Q$FirstDir\E/i)
 				{
 					$FirstDir = $_;
+					$alternateFirst = undef;
 					last;
 				}
-				else
+				elsif(not $alternateFirst)
 				{
 					my $TestDir = $FirstDir;
 					$TestDir =~ s/(-|_)+//g;
@@ -829,19 +832,24 @@ sub GetNewDirName
 					$TestThis =~ s/(-|_)+//g;
 					if($TestThis =~ /^\Q$TestDir\E$/i)
 					{
-						$FirstDir = $_;
-						last;
+						$alternateFirst = $_;
 					}
 				}
 			}
+			if ($alternateFirst)
+			{
+				$FirstDir = $alternateFirst;
+			}
 			if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
 			{
+				my $alternateSecondary;
 				@dirList = getDirectoriesIn($BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
 				foreach(@dirList)
 				{
 					if(/^\Q$SecondDir\E$/i)
 					{
 						$SecondDir = $_;
+						$alternateSecondary = undef;
 						last;
 					}
 					else
@@ -852,10 +860,13 @@ sub GetNewDirName
 						$TestThis =~ s/(-|_)+//g;
 						if($TestThis =~ /^\Q$TestDir\E$/i)
 						{
-							$SecondDir = $_;
-							last;
+							$alternateSecondary = $_;
 						}
 					}
+				}
+				if ($alternateSecondary)
+				{
+					$SecondDir = $alternateSecondary;
 				}
 			}
 			$DirPreferance{$lowerFirst} = $FirstDir;
@@ -926,6 +937,7 @@ sub RenameFile
 			return if $NeverRemove;
 			printv(M_STANDARD,"Remove: $OrigFile\n");
 			unlink($OrigFile);
+			RemoveIfEmpty(dirname($OrigFile));
 			return;
 		}
 	}
@@ -933,6 +945,7 @@ sub RenameFile
 	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 	cacheRename($OrigFile,$NewFile);
+	RemoveIfEmpty(dirname($OrigFile));
 }
 
 # Purpose: Queue a file for renaming
@@ -982,6 +995,10 @@ sub ProcessFile
 	if (-d $File)
 	{
 		printv(M_VERBOSE,'Searching through directory '.$File."\n");
+		if ($cleanTree)
+		{
+			push(@{$cleanTree},$File);
+		}
 		return;
 	}
 	return if not $File =~ /\.(ogg|mp3)$/gi;
@@ -996,7 +1013,6 @@ sub ProcessFile
 	else
 	{
 		RenameFile($File,"$NewDir/$NewName",$BaseDir);
-		RemoveIfEmpty(dirname($File));
 	}
 }
 
@@ -1082,7 +1098,6 @@ sub ProcessCompilation
 			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
 			next if not defined $NewDir or not defined $NewName;
 			RenameFile($File,$NewDir.'/'.$NewName,$BaseDir);
-			RemoveIfEmpty(dirname($File));
 		}
 	}
 
@@ -1132,6 +1147,10 @@ sub ProcessTree
 		},
 		$Dir
 	);
+	foreach my $cleanDir (@{$cleanTree})
+	{
+		RemoveIfEmpty($cleanDir);
+	}
 	if ($CompilationDetection)
 	{
 		ProcessCompilation($Dir);
@@ -1338,6 +1357,7 @@ GetOptions (
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
 		PrintHelp('-e','--cache','Enable file information caching');
 		PrintHelp('','--quiet','Suppress all non-error messages');
+		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
 		exit(0);
 	},
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
@@ -1350,6 +1370,7 @@ GetOptions (
 	'e|cache' => \$cacheFile,
 	'v|verbose+' => \$verbosity,
 	'q|quiet' => sub { $verbosity = 0 },
+	'cleantree' => sub { $cleanTree = [] },
 	'version' => sub {
 		print "mussort version $VERSION\n";
 		exit(0);
@@ -1459,6 +1480,17 @@ printed.
 Enables caching of file information. This can greatly improve the runtime speed
 of mussort, as it will cache information between runs. Cached information gets
 re-read if the file has been modified since the cache was created.
+
+=item B<--cleantree>
+
+When this parameter is in effect, mussort will attempt to clean up the
+directory tree by removing all empty directories that it hits. Note that
+this has a rather I<significant> performance impact because mussort needs to
+do a lot of extra readdir() operations, and should only be done if you notice
+a lot of empty directories in your music tree and want them cleaned up.
+
+Normally mussort will automatically clean directories that are empty as a
+result of sorting, but this option will make it check all directories it finds.
 
 =back
 
