@@ -1446,8 +1446,8 @@ names.
 Enables compilation detection. In this mode mussort will go through all files
 without moving them first, sorting them in an internal data structure, then it
 will attempt to detect compilation albums and re-sort members of the
-compilation albums before finally moving files on-disk. Instead of placing them
-into a directory tree matching I<ALBUM/FILENAME> instead of
+compilation albums before finally moving files on-disk. Compilation albums
+are placed into a directory tree matching I<ALBUM/FILENAME> instead of
 I<ARTIST/ALBUM/FILENAME>.
 
 Note that this mode is a bit slower than normal mode, and it will take a bit
