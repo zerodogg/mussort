@@ -21,7 +21,6 @@ use File::Find;
 use File::Basename qw(dirname basename);
 use File::Path qw(mkpath rmtree);
 use File::Copy;
-use File::stat;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
@@ -77,6 +76,16 @@ sub setTermTitle
 	{
 		print "\033]0;$title\007";
 	}
+}
+
+# Purpose: Returns the mtime of a file
+# Usage: $mtime = mtime(file);
+sub mtime
+{
+	my $file = shift;
+	my $mtime;
+	(undef,undef,undef,undef,undef,undef,undef,undef,undef,$mtime,undef,undef,undef) = stat($file);
+	return $mtime;
 }
 
 # Purpose: Check for a dependency
@@ -312,8 +321,7 @@ sub getInfoFromCache
 	{
 		if(defined($cachedInfo{info}->{$file}))
 		{
-			my $currentStat = stat($file)->mtime;
-			if ($currentStat <= $cachedInfo{mtime}->{$file})
+			if (mtime($file) <= $cachedInfo{mtime}->{$file})
 			{
 				return $cachedInfo{info}->{$file};
 			}
@@ -331,8 +339,7 @@ sub addToCache
 
 	if(defined $cachedInfo{info} && defined $cachedInfo{info}->{$file})
 	{
-		my $fstat = stat($file);
-		if ($cachedInfo{mtime}->{$file} >= $fstat->mtime)
+		if ($cachedInfo{mtime}->{$file} >= mtime($file))
 		{
 			return;
 		}
@@ -352,7 +359,7 @@ sub addToCache
 	}
 
 	$cachedInfo{info}->{$file} = $info;
-	my $fileinfo = stat($file);
+	my $fileinfo = mtime($file);
 	if(not $fileinfo)
 	{
 		printv(M_VERYVERBOSE,'Failed to stat() '.$fileinfo.' - skipping adding it to the cache'."\n");
@@ -360,7 +367,7 @@ sub addToCache
 	}
 	else
 	{
-		$cachedInfo{mtime}->{$file} = $fileinfo->mtime;
+		$cachedInfo{mtime}->{$file} = $fileinfo;
 	}
 }
 
