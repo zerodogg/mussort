@@ -1002,7 +1002,7 @@ sub RemoveIfEmpty
 	}
 	if($Removed)
 	{
-		printv(M_STANDARD,"Removed: $Removed\n");
+		printv(M_STANDARD,"Removed empty directory: $Removed\n");
 	}
 }
 
