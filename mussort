@@ -41,25 +41,45 @@ use constant {
 };
 
 our $VERSION = 0.2;
+
+# Hash of which information sources we have
 my %Has = (
-	'Audio::File' => 0,
-	'id3v2' => 0,
-	'id3info' => 0,
-	'ogginfo' => 0,
+	'Audio::File' => false,
+	'id3v2' => false,
+	'id3info' => false,
+	'ogginfo' => false,
 );
-my $NeverRemove;
-my $PreferAudioFile = false;
-my $verbosity = 1;
-my $RemoveLargest = true;
-my $AllowSpecialChars;
-my $DirInsensitive;
-my $SilentSkip;
-my $CompilationDetection;
-my $cacheFile;
-my $cleanTree;
+
+# Dir hash, used for the final directory cleanup
+my %cleanTree;
+# Dir preferance hash, used for case-insensitive searches
 my %DirPreferance;
+# The file information cache (as used by --cache)
 my %cachedInfo;
+# The directory information cache
 my @dirInfoCache;
+
+# -- The following are altered through command-line parameters --
+# Bool, true if we should never remove any files
+my $NeverRemove = false;
+# Bool, true if we should prefer Audio::File over the other programs
+my $PreferAudioFile = false;
+# Verbosity level (0-4)
+my $verbosity = 1;
+# Bool, true if we should remove the largest file
+my $RemoveLargest = true;
+# Bool, true if we should allow special characters in file names
+my $AllowSpecialChars = false;
+# Bool, true if we should work in case-insensitive mode
+my $DirInsensitive = false;
+# Bool, true if we should silently skip files (not outputting information about it)
+my $SilentSkip = false;
+# Bool, true if we should 
+my $CompilationDetection;
+# Bool, true or a string if caching is enabled (string would be path to the cache file)
+my $cacheFile = false;
+# Bool, true if we should add all directories to the clean process
+my $addAllCleanTree = false;
 
 # This makes sure the children are slayed properly
 $SIG{CHLD} = sub {
@@ -937,7 +957,7 @@ sub RenameFile
 			return if $NeverRemove;
 			printv(M_STANDARD,"Remove: $OrigFile\n");
 			unlink($OrigFile);
-			RemoveIfEmpty(dirname($OrigFile));
+			$cleanTree{dirname($OrigFile)} = 1;
 			return;
 		}
 	}
@@ -945,7 +965,7 @@ sub RenameFile
 	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 	cacheRename($OrigFile,$NewFile);
-	RemoveIfEmpty(dirname($OrigFile));
+	$cleanTree{dirname($OrigFile)} = 1;
 }
 
 # Purpose: Queue a file for renaming
@@ -995,9 +1015,9 @@ sub ProcessFile
 	if (-d $File)
 	{
 		printv(M_VERBOSE,'Searching through directory '.$File."\n");
-		if ($cleanTree)
+		if ($addAllCleanTree)
 		{
-			push(@{$cleanTree},$File);
+			$cleanTree{$File} = 1;
 		}
 		return;
 	}
@@ -1147,13 +1167,15 @@ sub ProcessTree
 		},
 		$Dir
 	);
-	foreach my $cleanDir (@{$cleanTree})
-	{
-		RemoveIfEmpty($cleanDir);
-	}
 	if ($CompilationDetection)
 	{
 		ProcessCompilation($Dir);
+	}
+
+	printv(M_VERBOSE,'Looking for empty directories that should be removed...'."\n");
+	foreach my $cleanDir (sort keys %cleanTree)
+	{
+		RemoveIfEmpty($cleanDir);
 	}
 	return(1);
 }
@@ -1379,7 +1401,7 @@ GetOptions (
 	'e|cache' => \$cacheFile,
 	'v|verbose+' => \$verbosity,
 	'q|quiet' => sub { $verbosity = 0 },
-	'cleantree' => sub { $cleanTree = [] },
+	'cleantree' => $addAllCleanTree,
 	'version' => sub {
 		print "mussort version $VERSION\n";
 		exit(0);
