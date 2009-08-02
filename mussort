@@ -1493,10 +1493,11 @@ re-read if the file has been modified since the cache was created.
 =item B<--cleantree>
 
 When this parameter is in effect, mussort will attempt to clean up the
-directory tree by removing all empty directories that it hits. Note that
-this has a rather I<significant> performance impact because mussort needs to
-do a lot of extra readdir() operations, and should only be done if you notice
-a lot of empty directories in your music tree and want them cleaned up.
+directory tree by removing all empty directories that it hits (in addition to
+performing its usual sorting). Note that this has a rather significant
+performance impact because mussort needs to do a lot of extra readdir()
+operations, and should only be done if you notice a lot of empty directories in
+your music tree and want them cleaned up.
 
 Normally mussort will automatically clean directories that are empty as a
 result of sorting, but this option will make it check all directories it finds.
