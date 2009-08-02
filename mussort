@@ -58,6 +58,9 @@ my %DirPreferance;
 my %cachedInfo;
 # The directory information cache
 my @dirInfoCache;
+# The number of entries added to the cache since it was last saved.
+# Used to write the cache file during runtime
+my $cacheAdditions = 0;
 
 # -- The following are altered through command-line parameters --
 # Bool, true if we should never remove any files
@@ -401,7 +404,13 @@ sub addToCache
 	my $file = shift;
 	my $info = shift;
 
-	if(defined $cachedInfo{mtime} && defined $cachedInfo{mtime}->{$file})
+	if(
+		defined $cachedInfo{mtime} && 
+		defined $cachedInfo{mtime}->{$file} && 
+		defined $cachedInfo{info} &&
+		defined $cachedInfo{info}->{$file} &&
+		(keys %{$cachedInfo{info}->{$file}} > 1)
+		)
 	{
 		if ($cachedInfo{mtime}->{$file} >= mtime($file))
 		{
@@ -413,6 +422,12 @@ sub addToCache
 		}
 	}
 
+	if(not (keys %{$info} > 1))
+	{
+		printv(M_DEBUG,'Refusing to add cached data for '.$file.': too little information'."\n");
+		return;
+	}
+
 	if(not defined $cachedInfo{info})
 	{
 		$cachedInfo{info} = {};
@@ -422,7 +437,6 @@ sub addToCache
 		$cachedInfo{mtime} = {};
 	}
 
-	$cachedInfo{info}->{$file} = $info;
 	my $fileinfo = mtime($file);
 	if(not $fileinfo)
 	{
@@ -431,7 +445,20 @@ sub addToCache
 	}
 	else
 	{
+		$cachedInfo{info}->{$file} = $info;
 		$cachedInfo{mtime}->{$file} = $fileinfo;
+		if ($cacheAdditions > 150)
+		{
+			eval
+			{
+				writeCache();
+			};
+			$cacheAdditions = 0;
+		}
+		else
+		{
+			$cacheAdditions++;
+		}
 	}
 }
 
@@ -476,28 +503,46 @@ sub loadCache
 			FatalError('retrieve() returned a useless reference of type: '.ref($info).' - try to disable --cache'."\n");
 		}
 	}
+	else
+	{
+		printv(M_STANDARD,'Will create cache file at '.$cacheFile."\n");
+	}
 }
 
 # Purpose: Write the cache if there is data in it
 # Usage: writeCache();
 sub writeCache
 {
+	my $ignoreError = shift;
 	if(defined($cachedInfo{info}) && keys(%{$cachedInfo{info}}))
 	{
-		my $had = 1;
+		my $doneLevel = M_VERBOSE;
+		my $err;
 		if (-e $cacheFile)
 		{
-			printv(M_VERBOSE,'Writing updated cache to '.$cacheFile."\n");
+			printv(M_VERBOSE,'Writing updated cache to '.$cacheFile.'...');
 		}
 		else
 		{
-			$had = 0;
+			$doneLevel = M_STANDARD;
 			printv(M_STANDARD,'Writing cache file '.$cacheFile.'...');
 		}
-		store(\%cachedInfo,$cacheFile) or FatalError('Failed to store() cache in '.$cacheFile.': '.$!);
-		if(not $had)
+		store(\%cachedInfo,$cacheFile) or $err = 1;
+		if ($err)
 		{
-			printv(M_STANDARD,'done'."\n");
+			if(not $ignoreError)
+			{
+				printv($doneLevel,'failed. ');
+				FatalError('Failed to store() cache in '.$cacheFile.': '.$err);
+			}
+			else
+			{
+				printv($doneLevel,'failed ('.$err.')'."\n");
+			}
+		}
+		else
+		{
+			printv($doneLevel,'done'."\n");
 		}
 	}
 }
