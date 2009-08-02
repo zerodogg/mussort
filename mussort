@@ -310,6 +310,7 @@ sub GetOggVorbisInfo
 	{
 		return GetInfoFromAudioFile($InfoFile);
 	}
+	return;
 }
 
 # Purpose: Get information about an mp3 file
@@ -447,7 +448,7 @@ sub addToCache
 	{
 		$cachedInfo{info}->{$file} = $info;
 		$cachedInfo{mtime}->{$file} = $fileinfo;
-		if ($cacheAdditions > 150)
+		if ($cacheAdditions > 200)
 		{
 			eval
 			{
@@ -1360,6 +1361,9 @@ sub printv
 		print 'Debug: ';
 	}
 	print $_[0];
+	# Flush STDOUT
+	$| = 1;
+	$| = 0;
 }
 
 # Purpose: Check for a file in path
