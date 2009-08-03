@@ -725,6 +725,7 @@ sub CleanTag
 	$Name =~ s#/##g;
 	$Name =~ s/\?//g;
 	$Name =~ s/#//g;
+	$Name =~ s/\\//g;
 	# Ensure we don't have two identical _ or - following each other. That's ugly.
 	$Name =~ s/_+/_/g;
 	$Name =~ s/-+/-/g;
