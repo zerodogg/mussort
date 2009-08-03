@@ -1309,19 +1309,27 @@ sub PrintHelp
 	my $maxlen = 80;
 	# The length the options take up
 	my $optionlen = 20;
+
+	# The length the short option take up
+	my $shortlen = 4;
+	if(length($short) > 4)
+	{
+		$shortlen = length($short);
+	}
+
 	# Check if the short/long are LONGER than optionlen, if so, we need
 	# to do some additional magic to take up only $maxlen.
-	# The +1 here is because we always add a space between them, no matter what
-	if ((length($short) + length($long) + 1) > $optionlen)
+	# The +2 here is because we always add some space between them, no matter what
+	if (($shortlen + length($long) + 2) > $optionlen)
 	{
-		$optionlen = length($short) + length($long) + 1;
+		$optionlen = $shortlen + length($long) + 2;
 	}
 	# Split the description into lines
 	foreach my $part (split(/ /,$desc))
 	{
 		if(defined $GeneratedDesc)
 		{
-			if ((length($currdesc) + length($part) + 1 + 20) > $maxlen)
+			if ((length($currdesc) + length($part) + 1 + $optionlen) > $maxlen)
 			{
 				$GeneratedDesc .= "\n";
 				$currdesc = '';
