@@ -12,6 +12,7 @@ Version 0.2
 - Added --cache - significantly speeds up subsequent runs on large
 	collections
 - Major optimizations
+- Added --keepdupes
 
 Version 0.1
 - Initial public release

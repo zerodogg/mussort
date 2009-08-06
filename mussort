@@ -38,6 +38,11 @@ use constant {
 	# Directory types, used for getDirectoriesIn()
 	DIR_TYPE_PRIMARY => 1,
 	DIR_TYPE_SECONDARY => 2,
+
+	# Duplicate actions
+	DUPE_REPLACE => 1,
+	DUPE_NOREMOVE => 2,
+	DUPE_KEEP => 3,
 };
 
 our $VERSION = 0.2;
@@ -63,14 +68,12 @@ my @dirInfoCache;
 my $cacheAdditions = 0;
 
 # -- The following are altered through command-line parameters --
-# Bool, true if we should never remove any files
-my $NeverRemove = false;
+# Int, the action to perform when detecting duplicates
+my $dupeAction = DUPE_REPLACE;
 # Bool, true if we should prefer Audio::File over the other programs
 my $PreferAudioFile = false;
 # Verbosity level (0-4)
 my $verbosity = 1;
-# Bool, true if we should remove the largest file
-my $RemoveLargest = true;
 # Bool, true if we should allow special characters in file names
 my $AllowSpecialChars = false;
 # Bool, true if we should work in case-insensitive mode
@@ -1000,15 +1003,39 @@ sub RenameFile
 	# Check if the file already exists
 	if(-e $NewFile)
 	{
-		# Check which file is the largest
-		if(-s $NewFile > -s $OrigFile)
+		if ($dupeAction == DUPE_REPLACE)
 		{
-			return if not $RemoveLargest;
-			return if $NeverRemove;
-			printv(M_STANDARD,"Remove: $OrigFile\n");
-			unlink($OrigFile);
-			$cleanTree{dirname($OrigFile)} = 1;
+			# Check which file is the largest
+			if(-s $NewFile > -s $OrigFile)
+			{
+				printv(M_STANDARD,"Remove: $OrigFile\n");
+				unlink($OrigFile);
+				$cleanTree{dirname($OrigFile)} = 1;
+				return;
+			}
+		}
+		elsif($dupeAction == DUPE_NOREMOVE)
+		{
 			return;
+		}
+		elsif($dupeAction == DUPE_KEEP)
+		{
+			my $ext = $NewFile;
+			my $name = $NewFile;
+			$ext =~ s/.*\.([^\.]+)$/$1/;
+			$name =~ s/^(.*)\.[^\.]+$/$1/;
+			my $no = 0;
+			my $nextName;
+			while((not defined $nextName) or (-e $nextName))
+			{
+				$no++;
+				$nextName = $name.'-'.$no.'.'.$ext;
+			}
+			$NewFile = $nextName;
+		}
+		else
+		{
+			die('Unknown dupeAction: '.$dupeAction);
 		}
 	}
 	# Output info and do the actual renaming
@@ -1036,7 +1063,7 @@ sub QueueRename
 # Usage: RemoveIfEmpty(DIR);
 sub RemoveIfEmpty
 {
-	return if $NeverRemove;
+	return if $dupeAction == DUPE_NOREMOVE;
 	my $Dir = shift;
 	my $SecondDir = dirname($Dir);
 	my $ThirdDir = dirname($SecondDir);
@@ -1480,11 +1507,6 @@ sub main
 	}
 	CheckDep('id3v2',undef,true);
 
-	if($NeverRemove)
-	{
-		$RemoveLargest = 0;
-	}
-
 	# This only gets printed if debug output actually IS enabled.
 	printv(M_DEBUG,"Debug output is enabled\n");
 
@@ -1520,6 +1542,7 @@ GetOptions (
 		PrintHelp('','--version','Display version information');
 		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (default)');
 		PrintHelp('-n','--noremove','Never remove any files (overrides --largest)');
+		PrintHelp('-k','--keepdupes','Keep and sort duplicates (overrides --largest)');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
 		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also a bit slower');
 		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags from all files (not just OGG vorbis)');
@@ -1533,8 +1556,9 @@ GetOptions (
 		exit(0);
 	},
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
-	'n|noremove' => \$NeverRemove,
-	'l|largest' => \$RemoveLargest,
+	'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
+	'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
+	'k|keepdupes' => sub { $dupeAction = DUPE_KEEP; },
 	'i|insensitive' => \$DirInsensitive,
 	'a|allowspecial' => \$AllowSpecialChars,
 	'debuginfo' => \&debugInfo,
@@ -1600,6 +1624,18 @@ file and leave the largest in place. This is default.
 
 When mussort reaches two files with identical names it will ignore one of the
 files (the last one it sees) and not sort it.
+
+=item B<--keepdupes>
+
+When mussort reaches two files with identical names, it will keep both,
+naming the one it finds last with a number at the end (ie.
+I<TRACKNUMBER-ARTIST-TRACKNAME-DUPENUMBER.EXT>).
+
+This is useful if you need to keep duplicates around, either because you have
+files which have the same tags but are different versions of a song, or if you
+are using a music synchronization service (such as I<http://mp3tunes.com/>)
+that will keep re-downloading the dupes whenever you do a full
+synchronization.
 
 =item B<-i, --insensitive>
 
@@ -1690,7 +1726,7 @@ ogginfo from vorbis-tools (slower) to get file information.
 =item ~/.mussort-cache
 
 The mussort file information cache. Only created when --cache is used.
-You can safely remove this file any time if you want to.
+You can safely remove this file any time if you want to (see also --cleancache).
 
 =back
 
