@@ -69,7 +69,7 @@ my $cacheAdditions = 0;
 
 # -- The following are altered through command-line parameters --
 # Int, the action to perform when detecting duplicates
-my $dupeAction = DUPE_REPLACE;
+my $dupeAction;
 # Bool, true if we should prefer Audio::File over the other programs
 my $PreferAudioFile = false;
 # Verbosity level (0-4)
@@ -1509,6 +1509,13 @@ sub main
 
 	# This only gets printed if debug output actually IS enabled.
 	printv(M_DEBUG,"Debug output is enabled\n");
+
+	if(not $dupeAction)
+	{
+		printv(M_STANDARD,"Note: Pretending --largest was supplied\n");
+		printv(M_VERBOSE,"Info: To suppress the above message, explicitly specify --larget, --noremove or --keepdupes\n");
+		$dupeAction = DUPE_REPLACE;
+	}
 
 	if(not (@ARGV))
 	{
