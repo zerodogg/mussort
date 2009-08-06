@@ -11,13 +11,14 @@ endif
 
 BINDIR ?= $(prefix)/bin
 DATADIR ?= $(prefix)/share
+DISTFILES = COPYING Makefile mussort NEWS TODO mussort.1
 
 # Install mussort
 install:
 	mkdir -p "$(BINDIR)"
 	cp mussort "$(BINDIR)"
 	chmod 755 "$(BINDIR)/mussort"
-	[  -e mussort.1 ] && mkdir -p "$(DATADIR)/man/man1" && cp mussort.1 "$(DATADIR)/man/man1" || true
+	[ -e mussort.1 ] && mkdir -p "$(DATADIR)/man/man1" && cp mussort.1 "$(DATADIR)/man/man1" || true
 # Unisntall an installed mussort
 uninstall:
 	rm -f "$(BINDIR)/mussort"
@@ -37,7 +38,7 @@ man:
 # Create the tarball
 distrib: clean test man
 	mkdir -p mussort-$(VERSION)
-	cp -r ./`ls|grep -v mussort-$(VERSION)` ./mussort-$(VERSION)
-	rm -rf `find mussort-$(VERSION) -name \\.svn`
+	cp $(DISTFILES) ./mussort-$(VERSION)
 	tar -jcvf mussort-$(VERSION).tar.bz2 ./mussort-$(VERSION)
 	rm -rf mussort-$(VERSION)
+	rm -f mussort.1
