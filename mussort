@@ -45,7 +45,7 @@ use constant {
 	DUPE_KEEP => 3,
 };
 
-our $VERSION = 0.2;
+our $VERSION = 0.3;
 
 # Hash of which information sources we have
 my %Has = (
@@ -83,7 +83,7 @@ my $SilentSkip = false;
 # Bool, true if we should 
 my $CompilationDetection;
 # Bool, true or a string if caching is enabled (string would be path to the cache file)
-my $cacheFile = false;
+my $cacheFile = true;
 # Bool, true if we should add all directories to the clean process
 my $addAllCleanTree = false;
 
@@ -1570,7 +1570,11 @@ GetOptions (
 	'a|allowspecial' => \$AllowSpecialChars,
 	'debuginfo' => \&debugInfo,
 	'c|compilation' => sub { $CompilationDetection = {} },
-	'e|cache' => \$cacheFile,
+	'e|cache' => sub { 
+		warn('--cache is deprecated, caching is now enabled by default'."\n");
+		$cacheFile = true;
+	},
+	'nocache|no-cache' => sub { $cacheFile = false },
 	'v|verbose+' => \$verbosity,
 	'q|quiet' => sub { $verbosity = 0 },
 	'cleantree' => $addAllCleanTree,
