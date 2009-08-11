@@ -1551,12 +1551,12 @@ GetOptions (
 		PrintHelp('-n','--noremove','Never remove any files (overrides --largest)');
 		PrintHelp('-k','--keepdupes','Keep and sort duplicates (overrides --largest)');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
-		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also a bit slower');
+		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also slightly slower');
 		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags from all files (not just OGG vorbis)');
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
-		PrintHelp('-e','--cache','Enable file information caching');
+		PrintHelp('','--no-cache','Disabled file information caching');
 		PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
 		PrintHelp('','--quiet','Suppress all non-error messages');
 		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
