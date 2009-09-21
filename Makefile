@@ -19,6 +19,10 @@ install:
 	cp mussort "$(BINDIR)"
 	chmod 755 "$(BINDIR)/mussort"
 	[ -e mussort.1 ] && mkdir -p "$(DATADIR)/man/man1" && cp mussort.1 "$(DATADIR)/man/man1" || true
+localinstall:
+	mkdir -p "$(BINDIR)"
+	ln -sf $(shell pwd)/mussort $(BINDIR)/
+	[  -e mussort.1 ] && mkdir -p "$(DATADIR)/man/man1" && ln -sf $(shell pwd)/mussort.1 "$(DATADIR)/man/man1" || true
 # Unisntall an installed mussort
 uninstall:
 	rm -f "$(BINDIR)/mussort"
