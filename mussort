@@ -1556,7 +1556,7 @@ GetOptions (
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
-		PrintHelp('','--no-cache','Disabled file information caching');
+		PrintHelp('','--no-cache','Disable file information caching');
 		PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
 		PrintHelp('','--quiet','Suppress all non-error messages');
 		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
