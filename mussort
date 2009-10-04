@@ -1513,7 +1513,7 @@ sub main
 	if(not $dupeAction)
 	{
 		printv(M_STANDARD,"Note: Pretending --largest was supplied\n");
-		printv(M_VERBOSE,"Info: To suppress the above message, explicitly specify --larget, --noremove or --keepdupes\n");
+		printv(M_VERBOSE,"Info: To suppress the above message, explicitly specify --largest, --noremove or --keepdupes\n");
 		$dupeAction = DUPE_REPLACE;
 	}
 
