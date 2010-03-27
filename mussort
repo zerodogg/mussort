@@ -488,7 +488,7 @@ sub loadCache
 	printv(M_DEBUG,'Caching is enabled'."\n");
 	if(not defined $ENV{HOME})
 	{
-		die('The environment variable HOME is not set. Unable to continue. Either set HOME, supply an absolute path to --cache or disable --cache'."\n");
+		die('The environment variable HOME is not set. Unable to continue. Set HOME or use --no-cache'."\n");
 	}
 	$cacheFile = $ENV{HOME}.'/.mussort-cache';
 	if (-e $cacheFile)
@@ -505,7 +505,7 @@ sub loadCache
 		}
 		elsif(ref($info))
 		{
-			FatalError('retrieve() returned a useless reference of type: '.ref($info).' - try to disable --cache'."\n");
+			FatalError('retrieve() returned a useless reference of type: '.ref($info).' - try --no-cache or remove '.$cacheFile."\n");
 		}
 		return false;
 	}
@@ -1610,9 +1610,11 @@ found.
 
 If you use --compilation then the sorting will differ for those albums that are
 detected to be compilation albums, those will be sorted as
-I<base_directory/ALBUM/FILENAME> instead.
+I<base_directory/ALBUM/FILENAME> instead. mussort will remove directories that
+end up empty after sorting.
 
-mussort will remove directories that end up empty after sorting.
+By default mussort will cache file information in ~/.mussort-cache, which speeds
+up subsequent invocations significantly
 
 =head1 OPTIONS
 
@@ -1695,11 +1697,15 @@ being read.
 Suppresses all status messages (and the terminal title). Errors will still get
 printed.
 
-=item B<-e, --cache>
+=item B<--no-cache>
 
-Enables caching of file information. This can greatly improve the runtime speed
-of mussort, as it will cache information between runs. Cached information gets
-re-read if the file has been modified since the cache was created.
+Disables caching of file information. By default mussort will cache file information
+(such as tags) between runs as that significantly improves speed in susequent
+invocations. If you supply this, mussort will neither write nor read any cache.
+
+Usually there is very little gain in using this, collections as large as 13 000+
+music files only have a cache file of ~3.2MB. If you want to get back a little of
+the space the cache file takes, see --cleancache.
 
 =item B<--cleancache>
 
@@ -1736,7 +1742,7 @@ ogginfo from vorbis-tools (slower) to get file information.
 
 =item ~/.mussort-cache
 
-The mussort file information cache. Only created when --cache is used.
+The mussort file information cache. Not created if --no-cache is supplied.
 You can safely remove this file any time if you want to (see also --cleancache).
 
 =back
