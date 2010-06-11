@@ -84,6 +84,9 @@ my $SilentSkip = false;
 my $CompilationDetection;
 # Bool, true or a string if caching is enabled (string would be path to the cache file)
 my $cacheFile = true;
+# Bool, true if we should *read* from the cache (as opposed to only writing updated
+# 	info to it)
+my $readFromCache = true;
 # Bool, true if we should add all directories to the clean process
 my $addAllCleanTree = false;
 
@@ -414,6 +417,10 @@ sub getTag
 sub getInfoFromCache
 {
 	my $file = shift;
+	if(not $readFromCache)
+	{
+		return;
+	}
 	if(defined $cacheFile)
 	{
 		if(defined($cachedInfo{mtime}->{$file}))
@@ -520,8 +527,15 @@ sub loadCache
 	if (-e $cacheFile)
 	{
 		my $iFile = $cacheFile;
-		$iFile =~ s{^$ENV{HOME}/*}{~};
-		printv(M_STANDARD,'Using cache from '.$cacheFile."\n");
+		$iFile =~ s/^$ENV{HOME}\/*/~/;
+		if ($readFromCache)
+		{
+			printv(M_STANDARD,'Using cache from '.$cacheFile."\n");
+		}
+		else
+		{
+			printv(M_STANDARD,'Refreshing cache at '.$cacheFile."\n");
+		}
 		my $info = retrieve($cacheFile) or FatalError('Failed to retrieve() cache from '.$cacheFile.': '.$!);
 		if ($info && ref($info) eq 'HASH')
 		{
@@ -1594,6 +1608,7 @@ GetOptions (
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
 		PrintHelp('','--no-cache','Disable file information caching');
 		PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
+		PrintHelp('','--refresh-cache','Refresh the cache (use the cache in a write-only mode)');
 		PrintHelp('','--quiet','Suppress all non-error messages');
 		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
 		exit(0);
@@ -1611,6 +1626,7 @@ GetOptions (
 		$cacheFile = true;
 	},
 	'nocache|no-cache' => sub { $cacheFile = false },
+	'refresh-cache' => sub { $readFromCache = false },
 	'v|verbose+' => \$verbosity,
 	'q|quiet' => sub { $verbosity = 0 },
 	'cleantree' => $addAllCleanTree,
@@ -1742,6 +1758,13 @@ invocations. If you supply this, mussort will neither write nor read any cache.
 Usually there is very little gain in using this, collections as large as 13 000+
 music files only have a cache file of ~3.2MB. If you want to get back a little of
 the space the cache file takes, see --cleancache.
+
+=item B<--refresh-cache>
+
+This will enable caching in a 'write-only' mode. That is it will write new
+information to the cache, but it will not use existing information. This can
+be used as an alternative to deleting the entire cache when you have different
+directories that you sort, and only want to re-sort (refresh) one of them.
 
 =item B<--cleancache>
 
