@@ -340,6 +340,7 @@ sub GetMP3Info
 		$FileInfo{Band} = getTag($Information,'artist');
 		$FileInfo{Album} = getTag($Information,'album');
 		$FileInfo{Track} = getTag($Information,'track');
+		$FileInfo{SetNo} = getTag($Information,'setNo');
 		$FileInfo{Ext} = 'mp3';
 		return(%FileInfo);
 	}
@@ -361,6 +362,7 @@ sub getTag
 		artist => [ 'TPE1','TP1','ARTIST' ],
 		album => [ 'TALB','TAL','ALBUM' ],
 		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK' ],
+		setNo => [ 'TPA' ],
 	);
 	if(not defined $possibleTags{$tag})
 	{
@@ -380,7 +382,31 @@ sub getTag
 	{
 		$content =~ s{/.*}{}g;
 	}
-	return CleanTag($content);
+	elsif($tag eq 'setNo')
+	{
+		my $valid = 0;
+		if ($content =~ m{^\d+/\d+$})
+		{
+			my $no = $content;
+			my $total = $content;
+			$no =~ s{/\d+$}{};
+			$total =~ s{^\d+/}{};
+			if ($no <= $total && $total > 1)
+			{
+				$valid = 1;
+				$content = { total => $total, number => $no };
+			}
+		}
+		if(not $valid)
+		{
+			$content = {};
+		}
+	}
+	if(not $tag eq 'setNo')
+	{
+		return CleanTag($content);
+	}
+	return $content;
 }
 
 # Purpose: Get information from cache if caching is enabled
@@ -781,6 +807,16 @@ sub GetNewFileName
 		{
 			$NewName = "$Info->{Track}-$NewName";
 		}
+	}
+
+	if  (
+		ref($Info->{SetNo}) &&
+		defined $Info->{SetNo}->{total} &&
+		$Info->{SetNo}->{total} > 1 &&
+		$Info->{SetNo}->{number} != 0
+		)
+	{
+		$NewName = 'CD'.$Info->{SetNo}->{number}.'-'.$NewName;
 	}
 
 	return($NewName);
@@ -1521,7 +1557,7 @@ sub main
 	{
 		FatalError('Requires one option: the directory to process. See --help for more information');
 	}
-	if(defined($cacheFile))
+	if($cacheFile)
 	{
 		loadCache();
 	}
@@ -1533,7 +1569,7 @@ sub main
 	{
 		ProcessTree($_);
 	}
-	if (defined $cacheFile)
+	if ($cacheFile)
 	{
 		writeCache();
 	}
@@ -1605,8 +1641,8 @@ It recursively searches a directory for MP3 and OGG Vorbis files, processing
 them one by one. It then reads the information from the file and puts them into
 a newly sorted directory tree, in the form
 I<base_directory/ARTIST/ALBUM/FILENAME>.  The files are renamed to
-I<TRACKNUMBER-ARTIST-TRACKNAME.EXT>, where TRACKNUMBER is omitted if it isn't
-found.
+I<CDn-TRACKNUMBER-ARTIST-TRACKNAME.EXT>. TRACKNUMBER is omitted if it isn't found, and
+CDn is only included if it detects multiple discs.
 
 If you use --compilation then the sorting will differ for those albums that are
 detected to be compilation albums, those will be sorted as

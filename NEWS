@@ -1,5 +1,6 @@
 Version 0.3
 - Caching is now enabled by default, can be disabled with --no-cache
+- Added support for multi-disc albums
 
 Version 0.2
 - Better dependency checking
