@@ -5,6 +5,8 @@ Version 0.3
 - Added --consistent which makes mussort generate consistent directory
 	names
 - Minor improvements to --insensitive
+- Fixed an issue with parts of the cache being invalidated when sorting
+	changed
 
 Version 0.2
 - Better dependency checking

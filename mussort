@@ -513,7 +513,7 @@ sub cacheRename
 	my $newFile = shift;
 	addToCache($newFile,$cachedInfo{info}->{$oldFile});
 	delete($cachedInfo{mtime}->{$oldFile});
-	delete($cachedInfo{mtime}->{$newFile});
+	delete($cachedInfo{info}->{$oldFile});
 }
 
 # Purpose: Load cached information
@@ -1038,24 +1038,58 @@ sub GetNewDirName_consistent
 sub getSingleConsistentDirName
 {
 	my $dir = shift;
+
+	# Don't process undef
 	if(not defined $dir)
 	{
 		return $dir;
 	}
-	my @parts = split(/[\s_]/,$dir);
-	my @final;
-	foreach my $p (@parts)
+
+	$dir = lc($dir);
+
+	$dir = getSingleConsistentEntity($dir,qr/[\s_]/o,'_',2);
+	if ($dir =~ /\./)
 	{
-		$p = lc($p);
-		if (length($p) > 2)
-		{
-			$p = ucfirst($p);
-		}
-		push(@final,$p);
+		$dir = getSingleConsistentEntity($dir,qr/[\.]/o,'.',0);
 	}
-	my $name = join('_',@final);
-	$name = ucfirst($name);
-	return $name;
+	foreach my $thing (qw(- , :))
+	{
+		if ($dir =~ /$thing/)
+		{
+			$dir = getSingleConsistentEntity($dir,qr/$thing/,$thing,2);
+		}
+	}
+
+	# Finally, uppercase the first char and return
+	$dir = ucfirst($dir);
+	return $dir;
+}
+
+# Purpose: Get a single consistently named entity according to supplied rules
+# Usage: entity = getSingleConsistentEntity(name, regex, joinwith, ucthreshold);
+sub getSingleConsistentEntity
+{
+	my $name = shift;
+	my $splitRegex = shift;
+	my $joinWith = shift;
+	my $ucThreshold = shift;
+
+	my @entries = split($splitRegex,$name);
+	my @final;
+	foreach my $e(@entries)
+	{
+		if (length($e) > $ucThreshold)
+		{
+			# This is far from an exhaustive list, but having these as lowercase
+			# usually makes a lot of sense, and they are very common in names.
+			if ($e ne 'and' && $e ne 'the')
+			{
+				$e = ucfirst($e);
+			}
+		}
+		push(@final,$e);
+	}
+	return join($joinWith,@final);
 }
 
 # Purpose: Do the actual renaming
