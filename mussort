@@ -78,6 +78,8 @@ my $verbosity = 1;
 my $AllowSpecialChars = false;
 # Bool, true if we should work in case-insensitive mode
 my $DirInsensitive = false;
+# Bool, true if we should work in case-insensitive consistent mode
+my $DirConsistent = false;
 # Bool, true if we should silently skip files (not outputting information about it)
 my $SilentSkip = false;
 # Bool, true if we should 
@@ -920,84 +922,13 @@ sub GetNewDirName
 		$SecondDir = $Info->{Album};
 	}
 	
-	# Get lowercased and fixed name
-	my $lowerFirst = lc($FirstDir);
-	$lowerFirst =~ s/[\.\,\&]//g;
-	my $lowerSecond = lc($SecondDir);
-	$lowerSecond =~ s/[\.\,\&]//g;
 	if($DirInsensitive)
 	{
-		if($DirPreferance{$lowerFirst})
-		{
-			$FirstDir = $DirPreferance{$lowerFirst};
-			if($DirPreferance{$lowerSecond})
-			{
-				$SecondDir = $DirPreferance{$lowerSecond};
-			}
-		}
-		else
-		{
-			my @dirList = getDirectoriesIn($BaseDir,DIR_TYPE_PRIMARY);
-			my $alternateFirst;
-			foreach(@dirList)
-			{
-				if(/^\Q$FirstDir\E/i)
-				{
-					$FirstDir = $_;
-					$alternateFirst = undef;
-					last;
-				}
-				elsif(not $alternateFirst)
-				{
-					my $TestDir = $FirstDir;
-					$TestDir =~ s/(-|_)+//g;
-					my $TestThis = $_;
-					$TestThis =~ s/(-|_)+//g;
-					if($TestThis =~ /^\Q$TestDir\E$/i)
-					{
-						$alternateFirst = $_;
-					}
-				}
-			}
-			if ($alternateFirst)
-			{
-				$FirstDir = $alternateFirst;
-			}
-			if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
-			{
-				my $alternateSecondary;
-				@dirList = getDirectoriesIn($BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
-				foreach(@dirList)
-				{
-					if(/^\Q$SecondDir\E$/i)
-					{
-						$SecondDir = $_;
-						$alternateSecondary = undef;
-						last;
-					}
-					else
-					{
-						my $TestDir = $SecondDir;
-						$TestDir =~ s/(-|_)+//g;
-						my $TestThis = $_;
-						$TestThis =~ s/(-|_)+//g;
-						if($TestThis =~ /^\Q$TestDir\E$/i)
-						{
-							$alternateSecondary = $_;
-						}
-					}
-				}
-				if ($alternateSecondary)
-				{
-					$SecondDir = $alternateSecondary;
-				}
-			}
-			$DirPreferance{$lowerFirst} = $FirstDir;
-			if(defined $lowerSecond and length $lowerSecond)
-			{
-				$DirPreferance{$lowerSecond} = $SecondDir;
-			}
-		}
+		($FirstDir,$SecondDir) = GetNewDirName_insensitive($FirstDir,$SecondDir,$BaseDir);
+	}
+	elsif($DirConsistent)
+	{
+		($FirstDir,$SecondDir) = GetNewDirName_consistent($FirstDir,$SecondDir);
 	}
 
 	if(defined $SecondDir and length $SecondDir and not $SecondDir eq 'Unknown')
@@ -1008,6 +939,127 @@ sub GetNewDirName
 	{
 		return("$BaseDir/$FirstDir/");
 	}
+}
+
+# Purpose: Retrieves case-insensitive directory names
+# Usage: ($first,$second) = GetNewDirName_insensitive($first,$second,$base);
+sub GetNewDirName_insensitive
+{
+	my($FirstDir,$SecondDir,$BaseDir) = @_;
+	# Get lowercased and fixed name
+	my $lowerFirst = lc($FirstDir);
+	$lowerFirst =~ s/[\.\,\&]//g;
+	my $lowerSecond = lc($SecondDir);
+	$lowerSecond =~ s/[\.\,\&]//g;
+	if($DirPreferance{$lowerFirst})
+	{
+		$FirstDir = $DirPreferance{$lowerFirst};
+		if($DirPreferance{$lowerSecond})
+		{
+			$SecondDir = $DirPreferance{$lowerSecond};
+		}
+	}
+	else
+	{
+		my @dirList = getDirectoriesIn($BaseDir,DIR_TYPE_PRIMARY);
+		my $alternateFirst;
+		foreach(@dirList)
+		{
+			if(/^\Q$FirstDir\E/i)
+			{
+				$FirstDir = $_;
+				$alternateFirst = undef;
+				last;
+			}
+			elsif(not $alternateFirst)
+			{
+				my $TestDir = $FirstDir;
+				$TestDir =~ s/(-|_)+//g;
+				my $TestThis = $_;
+				$TestThis =~ s/(-|_)+//g;
+				if($TestThis =~ /^\Q$TestDir\E$/i)
+				{
+					$alternateFirst = $_;
+				}
+			}
+		}
+		if ($alternateFirst)
+		{
+			$FirstDir = $alternateFirst;
+		}
+		if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
+		{
+			my $alternateSecondary;
+			@dirList = getDirectoriesIn($BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
+			foreach(@dirList)
+			{
+				if(/^\Q$SecondDir\E$/i)
+				{
+					$SecondDir = $_;
+					$alternateSecondary = undef;
+					last;
+				}
+				else
+				{
+					my $TestDir = $SecondDir;
+					$TestDir =~ s/(-|_)+//g;
+					my $TestThis = $_;
+					$TestThis =~ s/(-|_)+//g;
+					if($TestThis =~ /^\Q$TestDir\E$/i)
+					{
+						$alternateSecondary = $_;
+					}
+				}
+			}
+			if ($alternateSecondary)
+			{
+				$SecondDir = $alternateSecondary;
+			}
+		}
+		$DirPreferance{$lowerFirst} = $FirstDir;
+		if(defined $lowerSecond and length $lowerSecond)
+		{
+			$DirPreferance{$lowerSecond} = $SecondDir;
+		}
+	}
+	return ($FirstDir,$SecondDir);
+}
+
+# Purpose: Retrieves consistent directory names
+# Usage: ($first,$second) = GetNewDirName_consistent($first,$second);
+sub GetNewDirName_consistent
+{
+	my($FirstDir,$SecondDir) = @_;
+
+	$FirstDir = getSingleConsistentDirName($FirstDir);
+	$SecondDir = getSingleConsistentDirName($SecondDir);
+
+	return($FirstDir,$SecondDir);
+}
+
+# Purpose: Retrieves a single consistent directory name
+# Usage: ($dir) = getSingleConsistentDirName($dir);
+sub getSingleConsistentDirName
+{
+	my $dir = shift;
+	if(not defined $dir)
+	{
+		return $dir;
+	}
+	my @parts = split(/[\s_]/,$dir);
+	my @final;
+	foreach my $p (@parts)
+	{
+		$p = lc($p);
+		if (length($p) > 2)
+		{
+			$p = ucfirst($p);
+		}
+		push(@final,$p);
+	}
+	my $name = join('_',@final);
+	$name = ucfirst($name);
+	return $name;
 }
 
 # Purpose: Do the actual renaming
@@ -1601,7 +1653,8 @@ GetOptions (
 		PrintHelp('-n','--noremove','Never remove any files (overrides --largest)');
 		PrintHelp('-k','--keepdupes','Keep and sort duplicates (overrides --largest)');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
-		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will make directory names more consistent but is also slightly slower');
+		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will avoid directory names with different casing but is also slightly slower');
+		PrintHelp('-s','--consistent','Similarly to -i, this will avoid directory names with different casing by enforcing a consistent casing for all names');
 		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags from all files (not just OGG vorbis)');
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
@@ -1617,7 +1670,14 @@ GetOptions (
 	'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
 	'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
 	'k|keepdupes' => sub { $dupeAction = DUPE_KEEP; },
-	'i|insensitive' => \$DirInsensitive,
+	'i|insensitive' => sub {
+		$DirInsensitive = true;
+		die("--insensitive can not be combined with --consistent\n") if $DirConsistent;
+	},
+	's|consistent' => sub {
+		$DirConsistent = true;
+		die("--consistent can not be combined with --insensitive\n") if $DirInsensitive;
+	},
 	'a|allowspecial' => \$AllowSpecialChars,
 	'debuginfo' => \&debugInfo,
 	'c|compilation' => sub { $CompilationDetection = {} },
@@ -1707,8 +1767,23 @@ synchronization.
 Makes mussort do case-insensitive searches for directory names. This is useful
 when the case in the name of an artist differs and makes mussort place all the
 music correctly into one directory. This I<might> be a bit slower than normal
-operation, but not much. You can combine this option with I<--compilation> if
-you want to.
+operation, but not much. When using this option there is a chance that
+directory names will differ slightly between invocations of mussort.
+
+You can combine this option with I<--compilation> if you want to.  You can not
+combine I<--insensitive> with I<--consistent>.
+
+=item B<-s, --consistent>
+
+Makes mussort generate consistent directory names. This is useful to ensure that
+two collections on different machines have the exact same directory layout, so
+that they can be rsynced easily. It avoids directory names that are identical
+except for the casing, and is also consistent between runs, and accross
+different machines. Unlike I<-i>, the performance penalty is almost
+nonexistant.
+
+You can combine this option with I<--compilation> if you want to.
+You can not combine I<--consistent> with I<--insensitive>.
 
 =item B<-a, --allowspecial>
 
