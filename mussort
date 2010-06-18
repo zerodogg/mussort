@@ -961,61 +961,13 @@ sub GetNewDirName_insensitive
 	}
 	else
 	{
-		my @dirList = getDirectoriesIn($BaseDir,DIR_TYPE_PRIMARY);
-		my $alternateFirst;
-		foreach(@dirList)
-		{
-			if(/^\Q$FirstDir\E/i)
-			{
-				$FirstDir = $_;
-				$alternateFirst = undef;
-				last;
-			}
-			elsif(not $alternateFirst)
-			{
-				my $TestDir = $FirstDir;
-				$TestDir =~ s/(-|_)+//g;
-				my $TestThis = $_;
-				$TestThis =~ s/(-|_)+//g;
-				if($TestThis =~ /^\Q$TestDir\E$/i)
-				{
-					$alternateFirst = $_;
-				}
-			}
-		}
-		if ($alternateFirst)
-		{
-			$FirstDir = $alternateFirst;
-		}
+		$FirstDir = getSingleInsensitiveDirName($FirstDir,$BaseDir,DIR_TYPE_PRIMARY);
+
 		if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
 		{
-			my $alternateSecondary;
-			@dirList = getDirectoriesIn($BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
-			foreach(@dirList)
-			{
-				if(/^\Q$SecondDir\E$/i)
-				{
-					$SecondDir = $_;
-					$alternateSecondary = undef;
-					last;
-				}
-				else
-				{
-					my $TestDir = $SecondDir;
-					$TestDir =~ s/(-|_)+//g;
-					my $TestThis = $_;
-					$TestThis =~ s/(-|_)+//g;
-					if($TestThis =~ /^\Q$TestDir\E$/i)
-					{
-						$alternateSecondary = $_;
-					}
-				}
-			}
-			if ($alternateSecondary)
-			{
-				$SecondDir = $alternateSecondary;
-			}
+			$SecondDir = getSingleInsensitiveDirName($SecondDir,$BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
 		}
+
 		$DirPreferance{$lowerFirst} = $FirstDir;
 		if(defined $lowerSecond and length $lowerSecond)
 		{
@@ -1023,6 +975,50 @@ sub GetNewDirName_insensitive
 		}
 	}
 	return ($FirstDir,$SecondDir);
+}
+
+# Purpose: Retrieves a single consistent directory name
+# Usage: ($dir) = getSingleConsistentDirName($dir,$baseDir,$dirType);
+sub getSingleInsensitiveDirName
+{
+	my ($dir,$base,$type) = @_;
+	if (-d $base)
+	{
+		my $name;
+		my $alternate;
+		my $lower = lc($dir);
+		my @dirList = getDirectoriesIn($base,$type);
+		foreach my $try (@dirList)
+		{
+			my $lTry = lc($try);
+			if ($lTry eq $lower)
+			{
+				$name = $try;
+				$alternate = undef;
+				last;
+			}
+			elsif(not $alternate)
+			{
+				my $testDir = $lower;
+				$testDir =~ s/(-|_)+//g;
+				my $testTry = $lTry;
+				$testTry =~ s/(-|_)+//g;
+				if ($testDir eq $testTry)
+				{
+					$alternate = $try;
+				}
+			}
+		}
+		if ($name)
+		{
+			return $name;
+		}
+		elsif($alternate)
+		{
+			return $alternate;
+		}
+	}
+	return $dir;
 }
 
 # Purpose: Retrieves consistent directory names
@@ -1768,7 +1764,8 @@ Makes mussort do case-insensitive searches for directory names. This is useful
 when the case in the name of an artist differs and makes mussort place all the
 music correctly into one directory. This I<might> be a bit slower than normal
 operation, but not much. When using this option there is a chance that
-directory names will differ slightly between invocations of mussort.
+directory names will differ slightly between different collections (see also
+I<--consistent>).
 
 You can combine this option with I<--compilation> if you want to.  You can not
 combine I<--insensitive> with I<--consistent>.

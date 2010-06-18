@@ -4,6 +4,7 @@ Version 0.3
 - Added --refresh-cache (write-only cache mode)
 - Added --consistent which makes mussort generate consistent directory
 	names
+- Minor improvements to --insensitive
 
 Version 0.2
 - Better dependency checking
