@@ -1052,7 +1052,8 @@ sub getSingleConsistentDirName
 	{
 		$dir = getSingleConsistentEntity($dir,qr/[\.]/o,'.',0);
 	}
-	foreach my $thing (qw(- , :))
+	no warnings; # If not perl will spew warnings about the below qw()
+	foreach my $thing (qw(- : ,))
 	{
 		if ($dir =~ /$thing/)
 		{
