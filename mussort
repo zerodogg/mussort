@@ -203,7 +203,7 @@ sub CheckDep
 					$err = "The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.";
 					if ($alternate)
 					{
-						$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).";
+						$err .= "\nAlternatively, you may install the $alternate perl module.";
 						if ($DepToPackage{$path}{$alternate})
 						{
 							$err .= "\nIt can be found in the $DepToPackage{$path}{$alternate} package.";
@@ -217,7 +217,7 @@ sub CheckDep
 			$err = "The command '$cmd' is missing. Please install it, then re-run mussort.";
 			if ($alternate)
 			{
-				$err .= "\nAlternatively, you may install the $alternate perl module (which is faster).";
+				$err .= "\nAlternatively, you may install the $alternate perl module.";
 			}
 		}
 		if ($warningOnly)
@@ -311,6 +311,7 @@ sub GetOggVorbisInfo
 		$FileInfo{Band} = getTag(\%Information,'artist');
 		$FileInfo{Album} = getTag(\%Information,'album');
 		$FileInfo{Track} = getTag(\%Information,'track');
+		$FileInfo{SetNo} = getTag(\%Information,'setNo');
 		$FileInfo{Ext} = 'ogg';
 		return %FileInfo;
 	}
@@ -363,7 +364,7 @@ sub getTag
 		artist => [ 'TPE1','TP1','ARTIST','Artist' ],
 		album => [ 'TALB','TAL','ALBUM','Album' ],
 		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track' ],
-		setNo => [ 'TPA' ],
+		setNo => [ 'TPA','DISCNUMBER' ],
 	);
 	if(not defined $possibleTags{$tag})
 	{
@@ -787,12 +788,9 @@ sub GetInfo
 	{
 		printv(M_VERYVERBOSE,'Reading information about file: '.$File."\n");
 		my @try;
+
 		if ($File =~ /ogg$/i)
 		{
-			if ($Has{'Audio::File'})
-			{
-				push(@try,'Audio::File');
-			}
 			if ($Has{'ogginfo'})
 			{
 				push(@try,'ogg');
@@ -800,22 +798,26 @@ sub GetInfo
 		}
 		elsif($File =~ /mp3$/i)
 		{
-			push(@try,'mp3');
-			if ($Has{'Audio::File'})
+			if ($Has{'id3v2'} || $Has{'id3info'})
 			{
-				if ($PreferAudioFile)
-				{
-					unshift(@try,'Audio::File');
-				}
-				else
-				{
-					push(@try,'Audio::File');
-				}
+				push(@try,'mp3');
 			}
 		}
 		else
 		{
 			FatalError("Unknown filetype: $File\n");
+		}
+
+		if ($Has{'Audio::File'})
+		{
+			if ($PreferAudioFile)
+			{
+				unshift(@try,'Audio::File');
+			}
+			else
+			{
+				push(@try,'Audio::File');
+			}
 		}
 
 		foreach my $t (@try)
@@ -1849,7 +1851,7 @@ GetOptions (
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
 		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will avoid directory names with different casing but is also slightly slower');
 		PrintHelp('-s','--consistent','Similarly to -i, this will avoid directory names with different casing by enforcing a consistent casing for all names');
-		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags from all files (not just OGG vorbis)');
+		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags');
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
@@ -2078,8 +2080,14 @@ result of sorting, but this option will make it check all directories it finds.
 
 =head1 DEPENDENCIES
 
-It needs id3info from id3lib and either the perl module Audio::File (fastest) or
-ogginfo from vorbis-tools (slower) to get file information.
+It needs:
+
+=over
+
+=item For MP3: id3info from id3lib, or Audio::File
+=item For Vorbis: ogginfo from vorbis-tools, or Audio::File
+
+=back
 
 =head1 FILES
 

@@ -11,6 +11,7 @@ Version 0.3
 - Added cleaning of empty entries in the cache, allows --cleancache to be
 	used to force all skipped files to be re-evaluated
 - Improved fallbacks when a tag reading method fails
+- No longer perfers to use Audio::File for OGG Vorbis files
 
 Version 0.2
 - Better dependency checking
