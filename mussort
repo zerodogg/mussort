@@ -1489,6 +1489,16 @@ sub ProcessTree
 	setTermTitle('mussort ['.$Dir.']');
 	$Dir = realpath($Dir);
 
+	if(not -e $Dir)
+	{
+		FatalError($Dir.': does not exist');
+	}
+	elsif(not -d $Dir or not -r $Dir)
+	{
+		FatalError($Dir.': is not a directory or is not readable');
+	}
+
+
 	printv(M_STANDARD,"Processing: $Dir\n");
 	find({
 			wanted => sub { ProcessFile($File::Find::name,$Dir); },
