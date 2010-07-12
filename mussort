@@ -50,6 +50,7 @@ our $VERSION = 0.3;
 # Hash of which information sources we have
 my %Has = (
 	'Audio::File' => false,
+	'Ogg::Vorbis::Header::PurePerl' => false,
 	'id3v2' => false,
 	'id3info' => false,
 	'ogginfo' => false,
@@ -164,80 +165,66 @@ sub intMkpath
 }
 
 # Purpose: Check for a dependency
-# Usage: CheckDep(COMMAND);
-sub CheckDep
+# Usage: depError(COMMAND);
+sub depError
 {
-	my $cmd = shift;
-	my $alternate = shift;
-	my $warningOnly = shift;
-	if(not InPath($cmd))
+	my $format = shift;
+	my $install = shift;
+	my $recommended = shift;
+	my $debPackages = {
+			id3info => 'libid3-dev',
+			id3v2 => 'id3v2',
+			ogginfo => 'vorbis-tools',
+			'Audio::File' => 'libaudio-file-perl',
+			'Ogg::Vorbis::Header::PurePerl' => 'libogg-vorbis-header-pureperl-perl',
+		};
+	# Multi-dimensional hash mapping distro -> command -> package
+	my %DepToPackage = (
+		'/etc/apt/apt.conf.d/01ubuntu' => $debPackages,
+		'/etc/debian_version' => $debPackages,
+		'/etc/mandriva-release' => {
+			ogginfo => 'vorbis-tools',
+			id3info => 'id3lib',
+			id3v2 => 'id3v2',
+		},
+		'/etc/fedora-release' => {
+			ogginfo => 'vorbis-tools',
+			id3info => 'id3lib',
+			id3v2 => 'id3v2',
+		},
+	);
+	my $out = '';
+	my $depsMap = {};
+	foreach my $path (keys(%DepToPackage))
 	{
-		my $debPackages = {
-				id3info => 'libid3-dev',
-				id3v2 => 'id3v2',
-				ogginfo => 'vorbis-tools',
-				'Audio::File' => 'libaudio-file-perl',
-			};
-		# Multi-dimensional hash mapping distro -> command -> package
-		my %DepToPackage = (
-			'/etc/apt/apt.conf.d/01ubuntu' => $debPackages,
-			'/etc/debian_version' => $debPackages,
-			'/etc/mandriva-release' => {
-				ogginfo => 'vorbis-tools',
-				id3info => 'id3lib',
-				id3v2 => 'id3v2',
-			},
-			'/etc/fedora-release' => {
-				ogginfo => 'vorbis-tools',
-				id3info => 'id3lib',
-				id3v2 => 'id3v2',
-			},
-		);
-		my $err;
-		foreach my $path (keys(%DepToPackage))
+		if (-e $path)
 		{
-			if (-e $path)
-			{
-				if ($DepToPackage{$path}{$cmd})
-				{
-					$err = "The command '$cmd' is missing. Please install the $DepToPackage{$path}{$cmd} package.";
-					if ($alternate)
-					{
-						$err .= "\nAlternatively, you may install the $alternate perl module.";
-						if ($DepToPackage{$path}{$alternate})
-						{
-							$err .= "\nIt can be found in the $DepToPackage{$path}{$alternate} package.";
-						}
-					}
-				}
-			}
+			$depsMap = $DepToPackage{$path};
 		}
-		if(not $err)
+	}
+	$out .= "You are missing a component for $format support.\n";
+	$out .= "Please install either of the following:\n";
+	foreach my $e (@{$install})
+	{
+		my $oe = $e;
+		if ($e eq $recommended)
 		{
-			$err = "The command '$cmd' is missing. Please install it, then re-run mussort.";
-			if ($alternate)
-			{
-				$err .= "\nAlternatively, you may install the $alternate perl module.";
-			}
+			$oe = '[RECOMMENDED] '.$oe;
 		}
-		if ($warningOnly)
+		if ($depsMap->{$e})
 		{
-			$err =~ s/, then re-run mussort\.//g;
-			$err =~ s/Please install /For optimal file format support, please install /g;
-			$err .= ' (note that most files will still get sorted fine without it)'."\n";
-			warn('Warning: '.$err);
-			return false;
+			$out .= "$oe (from the $depsMap->{$e} package)\n";
 		}
 		else
 		{
-			FatalError($err);
+			if ($e =~ /::/)
+			{
+				$oe .= '(perl module)';
+			}
+			$out .= "$oe\n";
 		}
 	}
-	else
-	{
-		$Has{$cmd} = true;
-	}
-	return true;
+	FatalError($out);
 }
 
 # Purpose: Output an error message
@@ -315,10 +302,6 @@ sub GetOggVorbisInfo
 		$FileInfo{Ext} = 'ogg';
 		return %FileInfo;
 	}
-	elsif ($Has{'Audio::File'})
-	{
-		return GetInfoFromAudioFile($InfoFile);
-	}
 	return;
 }
 
@@ -360,11 +343,11 @@ sub getTag
 	my $info = shift;
 	my $tag = shift;
 	my %possibleTags = (
-		title => [ 'TIT2','TT2','TITLE','Title'],
-		artist => [ 'TPE1','TP1','ARTIST','Artist' ],
-		album => [ 'TALB','TAL','ALBUM','Album' ],
-		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track' ],
-		setNo => [ 'TPA','DISCNUMBER' ],
+		title => [ 'TIT2','TT2','TITLE','Title','title'],
+		artist => [ 'TPE1','TP1','ARTIST','Artist','artist' ],
+		album => [ 'TALB','TAL','ALBUM','Album', 'album' ],
+		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track', 'tracknumber' ],
+		setNo => [ 'TPA','DISCNUMBER', 'discnumber' ],
 	);
 	if(not defined $possibleTags{$tag})
 	{
@@ -718,35 +701,63 @@ sub GetMP3Info_id3info
 	return($hadInfo,\%Information);
 }
 
+# Purpose: Get information about an Ogg Vorbis file using
+#   Ogg::Vorbis::Header::PurePerl
+# Usage: my %Info = GetInfoFromVorbisHeader(FILE);
+sub GetInfoFromVorbisHeader
+{
+	my $File = shift;
+	my %FileInfo;
+	my %Information;
+	my $hadInfo = false;
+	eval {
+		local *STDERR;
+		# Ogg::Vorbis::Header::PurePerl outputs junk to STDERR we don't want,
+		# so temporarily redirect it to the black hole
+		open(STDERR,'>','/dev/null');
+
+		my $ov = Ogg::Vorbis::Header::PurePerl->new($File);
+		foreach my $t (qw(title artist album tracknumber discnumber))
+		{
+			$Information{$t} = $ov->comment($t);
+			if(defined $Information{$t} and length $Information{$t} and $Information{$t} ne '1')
+			{
+				$hadInfo = true;
+			}
+		}
+		1;
+	} or do {
+		my $err = $@;
+		if ($Has{'ogginfo'} || $Has{'Audio::File'})
+		{
+			printv(M_DEBUG,"Ogg::Vorbis::Header::PurePerl crashed on $File: $err\n");
+			return;
+		}
+		else
+		{
+			die('Ogg::Vorbis::Header::PurePerl appears to have crashed for the file "'.$File.'". Please install either ogginfo from vorbis-tools or Audio::File. Error: '.$err);
+		}
+	};
+	if ($hadInfo)
+	{
+		my %FileInfo;
+		$FileInfo{Title} = getTag(\%Information,'title');
+		$FileInfo{Band} = getTag(\%Information,'artist');
+		$FileInfo{Album} = getTag(\%Information,'album');
+		$FileInfo{Track} = getTag(\%Information,'track');
+		$FileInfo{SetNo} = getTag(\%Information,'setNo');
+		$FileInfo{Ext} = 'ogg';
+		return %FileInfo;
+	}
+	return;
+}
+
 # Purpose: Get information about an audio file using Audio::File
 # Usage: my %Info = GetInfoFromAudioFile(FILE);
 sub GetInfoFromAudioFile
 {
 	my $File = shift;
 	my %FileInfo;
-	eval {
-		local *STDERR;
-		# Audio::File outputs junk to STDERR we don't want, so temporarily redirect it
-		# to the black hole
-		open(STDERR,'>','/dev/null');
-		my $af = Audio::File->new($File);
-		eval { $FileInfo{Title} = CleanTag($af->tag->title) };
-		eval { $FileInfo{Band} = CleanTag($af->tag->artist) };
-		eval { $FileInfo{Album} = CleanTag($af->tag->album) };
-		eval { $FileInfo{Track} = CleanTag($af->tag->track) };
-		1;
-	} or do {
-		my $err = $@;
-		if(InPath('ogginfo'))
-		{
-			warn('Audio::File appears to have crashed for this file, using ogginfo for it instead. Error: '.$err);
-			return;
-		}
-		else
-		{
-			die($err);
-		}
-	};
 	if ($File =~ /mp3$/i)
 	{
 		$FileInfo{Ext} = 'mp3';
@@ -759,6 +770,39 @@ sub GetInfoFromAudioFile
 	{
 		FatalError("Unknown filetype: $File\n");
 	}
+	eval {
+		local *STDERR;
+		# Audio::File outputs junk to STDERR we don't want, so temporarily redirect it
+		# to the black hole
+		open(STDERR,'>','/dev/null');
+
+		my $af = Audio::File->new($File);
+		eval { $FileInfo{Title} = CleanTag($af->tag->title) };
+		eval { $FileInfo{Band} = CleanTag($af->tag->artist) };
+		eval { $FileInfo{Album} = CleanTag($af->tag->album) };
+		eval { $FileInfo{Track} = CleanTag($af->tag->track) };
+		1;
+	} or do {
+		my $err = $@;
+		printv(M_DEBUG,"Audio::File crashed on $File: $err\n");
+		if (
+			$FileInfo{Ext} eq 'mp3' and
+			($Has{'id3info'} or $Has{'id3v2'})
+		)
+		{
+			return;
+		}
+		elsif($FileInfo{Ext} eq 'ogg' and
+			($Has{'ogginfo'} or $Has{'Ogg::Vorbis::Header::PurePerl'}))
+		{
+			return;
+		}
+		else
+		{
+			die('Audio::File appears to have crashed for the file "'.$File.'". See the DEPENDENCIES section of the mussort manpage for a list of other libraries and utilities you can install to avoid this problem. Error: '.$err);
+		}
+		return;
+	};
 	return %FileInfo;
 }
 
@@ -791,6 +835,10 @@ sub GetInfo
 
 		if ($File =~ /ogg$/i)
 		{
+			if ($Has{'Ogg::Vorbis::Header::PurePerl'})
+			{
+				push(@try,'Ogg::Vorbis::Header::PurePerl');
+			}
 			if ($Has{'ogginfo'})
 			{
 				push(@try,'ogg');
@@ -825,6 +873,10 @@ sub GetInfo
 			if ($t eq 'Audio::File')
 			{
 				%FileInfo = GetInfoFromAudioFile($File);
+			}
+			elsif($t eq 'Ogg::Vorbis::Header::PurePerl')
+			{
+				%FileInfo = GetInfoFromVorbisHeader($File);
 			}
 			elsif($t eq 'mp3')
 			{
@@ -1792,18 +1844,33 @@ sub cleanCache
 # Purpose: Main application
 sub main
 {
+	# Check for what is installed
+	if(eval('use Ogg::Vorbis::Header::PurePerl;1;'))
+	{
+		$Has{'Ogg::Vorbis::Header::PurePerl'} = true;
+	}
 	if(eval('use Audio::File;1;'))
 	{
 		$Has{'Audio::File'} = true;
-		# id3info isn't strictly required if we have Audio::File
-		CheckDep('id3info',undef,true);
 	}
-	else
+	foreach my $cmd (qw(id3v2 id3info ogginfo))
 	{
-		CheckDep('ogginfo','Audio::File');
-		CheckDep('id3info');
+		if(InPath($cmd))
+		{
+			$Has{$cmd} = true;
+		}
 	}
-	CheckDep('id3v2',undef,true);
+	if(not $Has{'Audio::File'})
+	{
+		if (not $Has{'id3v2'} and not $Has{'id3info'})
+		{
+			depError('MP3',[ 'id3v2','id3info','Audio::File'],'id3v2');
+		}
+		if(not $Has{'ogginfo'} and not $Has{'Ogg::Vorbis::Header::PurePerl'})
+		{
+			depError('OGG Vorbis',[ 'ogginfo', 'Ogg::Vorbis::Header::PurePerl' ], 'Ogg::Vorbis::Header::PurePerl');
+		}
+	}
 
 	# This only gets printed if debug output actually IS enabled.
 	printv(M_DEBUG,"Debug output is enabled\n");
@@ -2080,12 +2147,15 @@ result of sorting, but this option will make it check all directories it finds.
 
 =head1 DEPENDENCIES
 
-It needs:
+mussort can use several libraries and utilities to retrieve tag information.
+It requires only one for each format, however if multiple methods are available
+mussort will try each in turn if one of them fails.
 
+It needs:
 =over
 
-=item For MP3: id3info from id3lib, or Audio::File
-=item For Vorbis: ogginfo from vorbis-tools, or Audio::File
+=item For MP3: id3v2 (best), id3info from id3lib, or Audio::File
+=item For Vorbis: Ogg::Vorbis::Header::PurePerl (best), ogginfo from vorbis-tools, or Audio::File
 
 =back
 

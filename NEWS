@@ -12,6 +12,8 @@ Version 0.3
 	used to force all skipped files to be re-evaluated
 - Improved fallbacks when a tag reading method fails
 - No longer perfers to use Audio::File for OGG Vorbis files
+- Added support for using Ogg::Vorbis::Header::PurePerl (which is now the
+	preferred way to read ogg tags)
 
 Version 0.2
 - Better dependency checking
