@@ -349,10 +349,6 @@ sub GetMP3Info
 		$FileInfo{Ext} = 'mp3';
 		return(%FileInfo);
 	}
-	elsif ($Has{'Audio::File'})
-	{
-		return GetInfoFromAudioFile($InfoFile);
-	}
 	return;
 }
 
@@ -363,10 +359,10 @@ sub getTag
 	my $info = shift;
 	my $tag = shift;
 	my %possibleTags = (
-		title => [ 'TIT2','TT2','TITLE' ],
-		artist => [ 'TPE1','TP1','ARTIST' ],
-		album => [ 'TALB','TAL','ALBUM' ],
-		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK' ],
+		title => [ 'TIT2','TT2','TITLE','Title'],
+		artist => [ 'TPE1','TP1','ARTIST','Artist' ],
+		album => [ 'TALB','TAL','ALBUM','Album' ],
+		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track' ],
 		setNo => [ 'TPA' ],
 	);
 	if(not defined $possibleTags{$tag})
@@ -377,15 +373,20 @@ sub getTag
 	my $content = 'Unknown';
 	foreach my $possible (@{$possibleTags{$tag}})
 	{
-		if(defined $info->{$possible} and length($info->{$possible}) and not $info->{$possible} eq 'Unknown')
+		if(IsValidTagValue($info->{$possible}))
 		{
 			$content = $info->{$possible};
+			if ($tag ne 'setNo' && $tag ne 'track')
+			{
+				$content = CleanTag($content);
+				next if not IsValidTagValue($content);
+			}
 			last;
 		}
 	}
 	if ($tag eq 'track')
 	{
-		$content =~ s{/.*}{}g;
+		$content =~ s{/.*$}{}g;
 	}
 	elsif($tag eq 'setNo')
 	{
@@ -396,7 +397,7 @@ sub getTag
 			my $total = $content;
 			$no =~ s{/\d+$}{};
 			$total =~ s{^\d+/}{};
-			if ($no <= $total && $total > 1)
+			if ($no > 1 || $total > 1)
 			{
 				$valid = 1;
 				$content = { total => $total, number => $no };
@@ -406,10 +407,6 @@ sub getTag
 		{
 			$content = {};
 		}
-	}
-	if(not $tag eq 'setNo')
-	{
-		return CleanTag($content);
 	}
 	return $content;
 }
@@ -501,6 +498,15 @@ sub addToCache
 	}
 }
 
+# Purpose: Remove cached information about a file
+# Usage: removeFromCache($file);
+sub removeFromCache
+{
+	my $file = shift;
+	delete($cachedInfo{info}->{$file});
+	delete($cachedInfo{mtime}->{$file});
+}
+
 # Purpose: Rename a file in the cache
 # Usage: cacheRename($oldName,$newName);
 sub cacheRename
@@ -512,8 +518,7 @@ sub cacheRename
 	}
 	my $newFile = shift;
 	addToCache($newFile,$cachedInfo{info}->{$oldFile});
-	delete($cachedInfo{mtime}->{$oldFile});
-	delete($cachedInfo{info}->{$oldFile});
+	removeFromCache($oldFile);
 }
 
 # Purpose: Load cached information
@@ -602,23 +607,69 @@ sub GetMP3Info_id3v2
 {
 	my $InfoFile = shift;
 	my %Information = ();
+	my %AlternateInfo = ();
+	my $o = $ENV{LC_ALL};
+	$ENV{LC_ALL} = 'C';
 	my $PID = open2(my $Child_OUT, my $Child_IN, 'id3v2', '--list', $InfoFile) or FatalError("Unable to open2(): $!");
+	$ENV{LC_ALL} = $o;
 	my $hadInfo = false;
 	while(<$Child_OUT>)
 	{
-		next if not /\):/;
-		chomp;
-		my $Opt = $_;
-		my $Val = $_;
-		$Opt =~ s/^(\w+)\s.*/$1/g;
-		$Val =~ s/^.+\):\s(.+)$/$1/g;
-		if($Val =~ /\S/)
+		if (/^(Title|Album|Comment)\s*:/)
 		{
-			if(not $Opt eq 'TRCK')
+			chomp;
+			my ($first,$second,$clean);
+			if (/^Title/)
+			{
+				$first = 'Title';
+				$second = 'Artist';
+			}
+			elsif(/^Album/)
+			{
+				$first = 'Album';
+				$second = 'Year';
+				$clean = ',\s*Genre\s*:.*';
+			}
+			elsif(/^Comment/)
+			{
+				$first = 'Comment';
+				$second = 'Track';
+			}
+			my $f = $_;
+			my $s = $_;
+			if(not $f =~ s/^$first\s*:\s*//)
+			{
+				next;
+			}
+			$f =~ s/\s+$second:.*//g;
+			if(not $s =~ s/^$first.+$second\s*:\s*//)
+			{
+				next;
+			}
+			$s =~ s/,\s*Genre\s*:.*//g;
+			if ($f or $s and not $first eq 'Comment')
 			{
 				$hadInfo = true;
 			}
-			$Information{$Opt} = $Val;
+			$Information{$first} = $f;
+			$Information{$second} = $s;
+		}
+		else
+		{
+			next if not /\):/;
+			chomp;
+			my $Opt = $_;
+			my $Val = $_;
+			$Opt =~ s/^(\w+)\s.*/$1/g;
+			$Val =~ s/^.+\):\s(.+)$/$1/g;
+			if($Val =~ /\S/)
+			{
+				if(not $Opt eq 'TRCK')
+				{
+					$hadInfo = true;
+				}
+				$Information{$Opt} = $Val;
+			}
 		}
 	}
 	close($Child_OUT);
@@ -678,7 +729,7 @@ sub GetInfoFromAudioFile
 		if(InPath('ogginfo'))
 		{
 			warn('Audio::File appears to have crashed for this file, using ogginfo for it instead. Error: '.$err);
-			return GetInfo($File,true);
+			return;
 		}
 		else
 		{
@@ -705,7 +756,7 @@ sub GetInfoFromAudioFile
 sub GetInfo
 {
 	my $File = shift;
-	my $forceNoAudioFile = shift;
+	my $usedCached = false;
 	my %FileInfo;
 	# We only use Audio::File for OGGs. id3info appears to be faster
 	# for MP3s
@@ -713,25 +764,72 @@ sub GetInfo
 	{
 		printv(M_DEBUG,'Using cached information for '.$File."\n");
 		%FileInfo = %{$info};
+		if(%FileInfo)
+		{
+			$usedCached = true;
+		}
+		else
+		{
+			printv(M_DEBUG,'Cached null information, ignoring');
+		}
 	}
-	else
+	if (not $usedCached)
 	{
 		printv(M_VERYVERBOSE,'Reading information about file: '.$File."\n");
-		if (not $forceNoAudioFile and $Has{'Audio::File'} and ($PreferAudioFile or $File =~ /ogg$/i))
+		my @try;
+		if ($File =~ /ogg$/i)
 		{
-			%FileInfo = GetInfoFromAudioFile($File);
+			if ($Has{'Audio::File'})
+			{
+				push(@try,'Audio::File');
+			}
+			if ($Has{'ogginfo'})
+			{
+				push(@try,'ogg');
+			}
 		}
 		elsif($File =~ /mp3$/i)
 		{
-			%FileInfo = GetMP3Info($File);
-		}
-		elsif ($File =~ /ogg$/i)
-		{
-			%FileInfo = GetOggVorbisInfo($File);
+			push(@try,'mp3');
+			if ($Has{'Audio::File'})
+			{
+				if ($PreferAudioFile)
+				{
+					unshift(@try,'Audio::File');
+				}
+				else
+				{
+					push(@try,'Audio::File');
+				}
+			}
 		}
 		else
 		{
 			FatalError("Unknown filetype: $File\n");
+		}
+
+		foreach my $t (@try)
+		{
+			if ($t eq 'Audio::File')
+			{
+				%FileInfo = GetInfoFromAudioFile($File);
+			}
+			elsif($t eq 'mp3')
+			{
+				%FileInfo = GetMP3Info($File);
+			}
+			elsif($t eq 'ogg')
+			{
+				%FileInfo = GetOggVorbisInfo($File);
+			}
+			if (%FileInfo and 
+				IsValidTagValue($FileInfo{Title}) and
+				IsValidTagValue($FileInfo{Band}) and
+				$FileInfo{Title} =~ /[\w\d]/ and
+				$FileInfo{Band} =~ /[\w\d]/)
+			{
+				last;
+			}
 		}
 	}
 
@@ -846,11 +944,24 @@ sub IsInvalidTagValue
 	my $value = shift;
 	if(not defined $value
 			or not length $value
-			or $value eq 'Unknown')
+			or $value eq 'Unknown'
+			or $value eq '~')
 	{
 		return true;
 	}
 	return false;
+}
+
+# Purpose: Check that the tag supplied is valid
+# Usage: bool = IsValidTagValue(VALUE);
+# This is simply a reversed version of IsInvalidTagValue()
+sub IsValidTagValue
+{
+	if(IsInvalidTagValue(@_))
+	{
+		return false;
+	}
+	return true;
 }
 
 # Purpose: Get a list of directories in a directory - possibly cached
@@ -1556,10 +1667,11 @@ sub cleanCache
 	}
 
 	$| = 1;
-	print "Looking through and cleaning the cache...";
+	print "Cleaning and validating the cache...";
 	print "\n" if $verbosity == M_DEBUG;
 	my $removedDangling = 0;
 	my $removedObsolete = 0;
+	my $removedIncomplete = 0;
 	my $existing = 0;
 	my $checked = 0;
 	my $last = 0;
@@ -1574,34 +1686,59 @@ sub cleanCache
 		if(not -e $file)
 		{
 			$removedDangling++;
-			delete($cachedInfo{info}->{$file});
-			delete($cachedInfo{mtime}->{$file});
+			removeFromCache($file);
 			printv(M_DEBUG,$file.': was dangling - removed'."\n");
 			next;
 		}
 		elsif(not defined $cachedInfo{mtime}->{$file})
 		{
 			$removedDangling++;
-			delete($cachedInfo{info}->{$file});
+			removeFromCache($file);
 			printv(M_DEBUG,$file.': was semi-dangling (no mtime reference) - removed'."\n");
 			next;
 		}
 		elsif(not defined $cachedInfo{info}->{$file})
 		{
 			$removedDangling++;
-			delete($cachedInfo{mtime}->{$file});
-			delete($cachedInfo{info}->{$file});
+			removeFromCache($file);
 			printv(M_DEBUG,$file.': had no actual data - removed'."\n");
 			next;
 		}
 		elsif(mtime($file) > $cachedInfo{mtime}->{$file})
 		{
 			$removedObsolete++;
-			delete($cachedInfo{info}->{$file});
-			delete($cachedInfo{mtime}->{$file});
+			removeFromCache($file);
 			printv(M_DEBUG,$file.': has expired from the cache - removed'."\n");
 			next;
 		}
+		else
+		{
+			my $hadInfo = 0;
+			foreach my $ent (qw(Title Band))
+			{
+				my $t = $cachedInfo{info}->{$file}->{$ent};
+				if(IsValidTagValue($t) && $t =~ /(\w|\d)/)
+				{
+					$hadInfo++;
+				}
+			}
+			if($hadInfo <= 1)
+			{
+				$removedIncomplete++;
+				removeFromCache($file);
+				printv(M_DEBUG,$file.': had incomplete information - removed'."\n");
+				next;
+			}
+			elsif(IsValidTagValue($cachedInfo{info}->{$file}->{Track}) and
+					$cachedInfo{info}->{$file}->{Track} =~ /\D/)
+			{
+				$removedIncomplete++;
+				removeFromCache($file);
+				printv(M_DEBUG,$file.': had an invalid track number - removed'."\n");
+				next;
+			}
+		}
+
 		$existing++;
 	}
 	print '.' if $verbosity < M_DEBUG;
@@ -1617,8 +1754,11 @@ sub cleanCache
 	}
 	print "done\n" if $verbosity < M_DEBUG;
 	print "The cache had $checked entries\n";
-	print "Removed $removedDangling dangling references, and $removedObsolete obsolete references\n";
-	print 'for a total of '.($removedDangling+$removedObsolete)." references removed\n";
+	my $f = "%-25s: %s\n";
+	printf($f,'Dangling references',$removedDangling);
+	printf($f,'Obsolete references',$removedObsolete);
+	printf($f,'Incomplete references',$removedIncomplete);
+	print "Removed a total of ".($removedDangling+$removedObsolete+$removedIncomplete)." references\n";
 	print "$existing valid references left\n";
 	writeCache();
 	exit(0);
@@ -1814,7 +1954,10 @@ except for the casing, and is also consistent between runs, and accross
 different machines. Unlike I<-i>, the performance penalty is almost
 nonexistant.
 
-You can combine this option with I<--compilation> if you want to.
+You can combine this option with I<--compilation> if you want to. Note that
+I<--compilation> changes the directory layout, so a collection sorted without
+I<--compilation> but with I<--consistent> will differ from a collection sorted
+with both I<--compilation> B<and> I<--consistent>.
 You can not combine I<--consistent> with I<--insensitive>.
 
 =item B<-a, --allowspecial>
@@ -1875,13 +2018,26 @@ directories that you sort, and only want to re-sort (refresh) one of them.
 
 =item B<--cleancache>
 
-This cleans up the cache. It goes through all entries in the cache and
-removes dangling references as well as any expired data.
+This cleans up the cache. It will go through all entries in the cache and remove
+dangling references, expired data and incomplete data. Incomplete data is added
+when mussort finds a file that has invlalid/empty tags. Those files are still
+added to the cache so that mussort does not have to re-evaluate them each time,
+but their entries contain no valid data.
 
-This is useful if you have deleted or moved a large amount of music files
-that mussort has previously sorted, or if you want to save a little bit of
-HD space. This is never required to be run, mussort will automatically
-re-evaluate expired cache data during runtime.
+This can be useful in a few cases:
+
+=over
+
+=item - If you have deleted or mvoed a large amount of music files that mussort has previously sorted
+
+=item - If you want to save a tiny bit of HD space
+
+=item - If you want mussort to re-read information from files that previously contained invalid data
+
+=back
+
+mussort will automatically re-evaluate any expired cache data during runtime,
+so you are never B<required> to run I<--cleancache>.
 
 =item B<--cleantree>
 
