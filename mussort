@@ -550,7 +550,9 @@ sub loadCache
 			printv(M_DEBUG,"Read cached information\n");
 			%cachedInfo = %{$info};
 
-			if (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
+			if ( (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
+					and
+				 (not $cleaning) )
 			{
 				printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
 				printv(M_STANDARD,'        This message will only be displayed once.'."\n");
