@@ -641,8 +641,8 @@ sub GetMP3Info_id3v2
 			{
 				next;
 			}
-			$f =~ s/\s+$second:.*//g;
-			if(not $s =~ s/^$first.+$second\s*:\s*//)
+			$f =~ s/\s*$second:.*//g;
+			if(not $s =~ s/^$first.*$second\s*:\s*//)
 			{
 				next;
 			}
@@ -1730,7 +1730,10 @@ sub cleanCache
 				next;
 			}
 			elsif(IsValidTagValue($cachedInfo{info}->{$file}->{Track}) and
-					$cachedInfo{info}->{$file}->{Track} =~ /\D/)
+					(
+						($cachedInfo{info}->{$file}->{Track} =~ /\D/) or
+						($cachedInfo{info}->{$file}->{Track} > 999)
+					) )
 			{
 				$removedIncomplete++;
 				removeFromCache($file);
