@@ -390,7 +390,7 @@ sub getTag
 	}
 	elsif($tag eq 'setNo')
 	{
-		my $valid = 0;
+		my $valid = false;
 		if ($content =~ m{^\d+/\d+$})
 		{
 			my $no = $content;
@@ -399,7 +399,7 @@ sub getTag
 			$total =~ s{^\d+/}{};
 			if ($no > 1 || $total > 1)
 			{
-				$valid = 1;
+				$valid = true;
 				$content = { total => $total, number => $no };
 			}
 		}
@@ -489,7 +489,7 @@ sub addToCache
 			{
 				writeCache();
 			};
-			$cacheAdditions = 0;
+			$cacheAdditions = false;
 		}
 		else
 		{
@@ -525,6 +525,7 @@ sub cacheRename
 # Usage: loadCache();
 sub loadCache
 {
+	my $cleaning = shift;
 	printv(M_DEBUG,'Caching is enabled'."\n");
 	if(not defined $ENV{HOME})
 	{
@@ -548,6 +549,12 @@ sub loadCache
 		{
 			printv(M_DEBUG,"Read cached information\n");
 			%cachedInfo = %{$info};
+
+			if (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
+			{
+				printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
+				printv(M_STANDARD,'        This message will only be displayed once.'."\n");
+			}
 			return true;
 		}
 		elsif(ref($info))
@@ -581,6 +588,7 @@ sub writeCache
 			$doneLevel = M_STANDARD;
 			printv(M_STANDARD,'Writing cache file '.$cacheFile.'...');
 		}
+		$cachedInfo{lastMussortVersion} = $VERSION;
 		store(\%cachedInfo,$cacheFile) or $err = 1;
 		if ($err)
 		{
@@ -1254,7 +1262,7 @@ sub RenameFile
 			{
 				printv(M_STANDARD,"Remove: $OrigFile\n");
 				unlink($OrigFile);
-				$cleanTree{dirname($OrigFile)} = 1;
+				$cleanTree{dirname($OrigFile)} = true;
 				return;
 			}
 		}
@@ -1286,7 +1294,7 @@ sub RenameFile
 	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
 	move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 	cacheRename($OrigFile,$NewFile);
-	$cleanTree{dirname($OrigFile)} = 1;
+	$cleanTree{dirname($OrigFile)} = true;
 }
 
 # Purpose: Queue a file for renaming
@@ -1338,7 +1346,7 @@ sub ProcessFile
 		printv(M_VERBOSE,'Searching through directory '.$File."\n");
 		if ($addAllCleanTree)
 		{
-			$cleanTree{$File} = 1;
+			$cleanTree{$File} = true;
 		}
 		return;
 	}
@@ -1645,8 +1653,8 @@ sub printv
 	}
 	print $_[0];
 	# Flush STDOUT
-	$| = 1;
-	$| = 0;
+	$| = true;
+	$| = false;
 }
 
 # Purpose: Check for a file in path
@@ -1660,13 +1668,13 @@ sub InPath
 # Usage: cleanCache()
 sub cleanCache
 {
-	if(not loadCache())
+	if(not loadCache(true))
 	{
 		print "No cached data found - nothing to clean\n";
 		exit(0);
 	}
 
-	$| = 1;
+	$| = true;
 	print "Cleaning and validating the cache...";
 	print "\n" if $verbosity == M_DEBUG;
 	my $removedDangling = 0;
@@ -1713,7 +1721,7 @@ sub cleanCache
 		}
 		else
 		{
-			my $hadInfo = 0;
+			my $hadInfo = false;
 			foreach my $ent (qw(Title Band))
 			{
 				my $t = $cachedInfo{info}->{$file}->{$ent};
@@ -1772,7 +1780,7 @@ sub main
 {
 	if(eval('use Audio::File;1;'))
 	{
-		$Has{'Audio::File'} = 1;
+		$Has{'Audio::File'} = true;
 		# id3info isn't strictly required if we have Audio::File
 		CheckDep('id3info',undef,true);
 	}
