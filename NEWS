@@ -14,6 +14,7 @@ Version 0.3
 - No longer perfers to use Audio::File for OGG Vorbis files
 - Added support for using Ogg::Vorbis::Header::PurePerl (which is now the
 	preferred way to read ogg tags)
+- --keepdupes is now default instead of --largest
 
 Version 0.2
 - Better dependency checking

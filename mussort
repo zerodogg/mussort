@@ -70,7 +70,7 @@ my $cacheAdditions = 0;
 
 # -- The following are altered through command-line parameters --
 # Int, the action to perform when detecting duplicates
-my $dupeAction;
+my $dupeAction = DUPE_KEEP;
 # Bool, true if we should prefer Audio::File over the other programs
 my $PreferAudioFile = false;
 # Verbosity level (0-4)
@@ -540,6 +540,13 @@ sub loadCache
 			{
 				printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
 				printv(M_STANDARD,'        This message will only be displayed once.'."\n");
+			}
+			# If the cache file is over 25 MiB, display a warning
+			if(not $cleaning and -s $cacheFile > 26214400)
+			{
+				my $size = -s $cacheFile / 1024 / 1024;
+				printv(M_STANDARD,'NOTICE: Your cache file is unreasonably large ('.$size.' MiB).'."\n");
+				printv(M_STANDARD,'        You may want to run "mussort --cleancache" to reduce the size'."\n");
 			}
 			return true;
 		}
@@ -1875,13 +1882,6 @@ sub main
 	# This only gets printed if debug output actually IS enabled.
 	printv(M_DEBUG,"Debug output is enabled\n");
 
-	if(not $dupeAction)
-	{
-		printv(M_STANDARD,"Note: Pretending --largest was supplied\n");
-		printv(M_VERBOSE,"Info: To suppress the above message, explicitly specify --largest, --noremove or --keepdupes\n");
-		$dupeAction = DUPE_REPLACE;
-	}
-
 	if(not (@ARGV))
 	{
 		FatalError('Requires one option: the directory to process. See --help for more information');
@@ -1912,9 +1912,9 @@ GetOptions (
 		print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
 		PrintHelp('-h','--help','Display this help screen');
 		PrintHelp('','--version','Display version information');
-		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (default)');
-		PrintHelp('-n','--noremove','Never remove any files (overrides --largest)');
-		PrintHelp('-k','--keepdupes','Keep and sort duplicates (overrides --largest)');
+		PrintHelp('-k','--keepdupes','Keep and sort duplicates (default)');
+		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (overrides --keepdues)');
+		PrintHelp('-n','--noremove','Never remove any files (overrides --keepdupes)');
 		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
 		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will avoid directory names with different casing but is also slightly slower');
 		PrintHelp('-s','--consistent','Similarly to -i, this will avoid directory names with different casing by enforcing a consistent casing for all names');
@@ -2003,27 +2003,22 @@ Display a short help screen and exit
 
 Display version information and exit
 
+=item B<-k, --keepdupes>
+
+When mussort reaches two files with identical names, it will keep both,
+naming the one it finds last with a number at the end (ie.
+I<TRACKNUMBER-ARTIST-TRACKNAME-DUPENUMBER.EXT>). This is the default.
+Use I<--largest> and I<--noremove> to alter this behaviour.
+
 =item B<-l, --largest>
 
 When mussort reaches two files with identical names, it will remove (delete) the smallest
-file and leave the largest in place. This is default.
+file and leave the largest in place.
 
 =item B<-n, --noremove>
 
 When mussort reaches two files with identical names it will ignore one of the
 files (the last one it sees) and not sort it.
-
-=item B<--keepdupes>
-
-When mussort reaches two files with identical names, it will keep both,
-naming the one it finds last with a number at the end (ie.
-I<TRACKNUMBER-ARTIST-TRACKNAME-DUPENUMBER.EXT>).
-
-This is useful if you need to keep duplicates around, either because you have
-files which have the same tags but are different versions of a song, or if you
-are using a music synchronization service (such as I<http://mp3tunes.com/>)
-that will keep re-downloading the dupes whenever you do a full
-synchronization.
 
 =item B<-i, --insensitive>
 
