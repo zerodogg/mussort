@@ -938,7 +938,7 @@ sub GetInfo
 	if(not defined $FileInfo{Track} or not $FileInfo{Track} =~ /^\d+$/)
 	{
 		my $Track = basename($File);
-		if ($Track =~ s/^(\d+).*$/$1/)
+		if ($Track =~ s/^(\d+)\D+.*$/$1/)
 		{
 			$FileInfo{Track} = $Track;
 		}
@@ -1992,11 +1992,15 @@ GetOptions (
 		foreach my $entry (keys(%{$info}))
 		{
 			my $c = $info->{$entry};
-			if(ref($c))
+			if(defined($c) and ref($c))
 			{
 				$c = Dumper($c);
 				$c =~ s/;\n$//;
 				$c =~ s/^\$VAR\d*\s*=\s*//;
+			}
+			if(not defined $c or not length($c))
+			{
+				$c = '(unknown)';
 			}
 			print "$entry: $c\n";
 		}
