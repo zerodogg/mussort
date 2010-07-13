@@ -310,16 +310,20 @@ sub GetOggVorbisInfo
 sub GetMP3Info
 {
 	my $InfoFile = shift;
-	my $hadInfo = false;
+	my $type = shift;
 	my $Information;
-	if ($Has{id3v2})
+	my $hadInfo = false;
+	if ($type eq 'id3v2')
 	{
 		($hadInfo,$Information) = GetMP3Info_id3v2($InfoFile);
 	}
-
-	if(not $hadInfo and $Has{id3info})
+	elsif($type eq 'id3info')
 	{
 		($hadInfo,$Information) = GetMP3Info_id3info($InfoFile);
+	}
+	else
+	{
+		die("GetMP3Info: unknown type: $type\n");
 	}
 
 	if ($hadInfo)
@@ -853,9 +857,13 @@ sub GetInfo
 		}
 		elsif($File =~ /mp3$/i)
 		{
-			if ($Has{'id3v2'} || $Has{'id3info'})
+			if ($Has{'id3v2'})
 			{
-				push(@try,'mp3');
+				push(@try,'id3v2');
+			}
+			if ($Has{'id3info'})
+			{
+				push(@try,'id3info');
 			}
 		}
 		else
@@ -877,6 +885,7 @@ sub GetInfo
 
 		foreach my $t (@try)
 		{
+			printv(M_DEBUG,'Trying method: '.$t."\n");
 			if ($t eq 'Audio::File')
 			{
 				%FileInfo = GetInfoFromAudioFile($File);
@@ -884,6 +893,14 @@ sub GetInfo
 			elsif($t eq 'Ogg::Vorbis::Header::PurePerl')
 			{
 				%FileInfo = GetInfoFromVorbisHeader($File);
+			}
+			elsif($t eq 'id3v2')
+			{
+				%FileInfo = GetMP3Info($File,'id3v2');
+			}
+			elsif($t eq 'id3info')
+			{
+				%FileInfo = GetMP3Info($File,'id3info');
 			}
 			elsif($t eq 'mp3')
 			{
@@ -897,7 +914,9 @@ sub GetInfo
 				IsValidTagValue($FileInfo{Title}) and
 				IsValidTagValue($FileInfo{Band}) and
 				$FileInfo{Title} =~ /[\w\d]/ and
-				$FileInfo{Band} =~ /[\w\d]/)
+				$FileInfo{Band} =~ /[\w\d]/ and
+				keys %FileInfo > 1
+				)
 			{
 				last;
 			}
@@ -1848,10 +1867,9 @@ sub cleanCache
 	exit(0);
 }
 
-# Purpose: Main application
-sub main
+# Purpose: Initialize dependency lists
+sub initDeps
 {
-	# Check for what is installed
 	if(eval('use Ogg::Vorbis::Header::PurePerl;1;'))
 	{
 		$Has{'Ogg::Vorbis::Header::PurePerl'} = true;
@@ -1878,7 +1896,12 @@ sub main
 			depError('OGG Vorbis',[ 'ogginfo', 'Ogg::Vorbis::Header::PurePerl' ], 'Ogg::Vorbis::Header::PurePerl');
 		}
 	}
+}
 
+# Purpose: Main application
+sub main
+{
+	initDeps();
 	# This only gets printed if debug output actually IS enabled.
 	printv(M_DEBUG,"Debug output is enabled\n");
 
@@ -1927,6 +1950,7 @@ GetOptions (
 		PrintHelp('','--refresh-cache','Refresh the cache (use the cache in a write-only mode)');
 		PrintHelp('','--quiet','Suppress all non-error messages');
 		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
+		PrintHelp('','--fileinfo','Display parsed file information for the supplied file.');
 		exit(0);
 	},
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
@@ -1954,6 +1978,30 @@ GetOptions (
 	'q|quiet' => sub { $verbosity = 0 },
 	'cleantree' => $addAllCleanTree,
 	'cleancache' => \&cleanCache,
+	'fileinfo=s' => sub {
+		shift; my $file = shift;
+		$file = realpath($file);
+		eval('use Data::Dumper qw(Dumper); $Data::Dumper::Indent = 0;');
+		initDeps();
+		if($cacheFile)
+		{
+			loadCache();
+		}
+		print "File information for $file:\n";
+		my $info = GetInfo($file);
+		foreach my $entry (keys(%{$info}))
+		{
+			my $c = $info->{$entry};
+			if(ref($c))
+			{
+				$c = Dumper($c);
+				$c =~ s/;\n$//;
+				$c =~ s/^\$VAR\d*\s*=\s*//;
+			}
+			print "$entry: $c\n";
+		}
+		exit(0);
+	},
 	'version' => sub {
 		print "mussort version $VERSION\n";
 		exit(0);
