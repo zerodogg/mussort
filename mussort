@@ -51,6 +51,7 @@ our $VERSION = 0.3;
 my %Has = (
 	'Audio::File' => false,
 	'Ogg::Vorbis::Header::PurePerl' => false,
+	'Ogg::Vorbis::Header' => false,
 	'id3v2' => false,
 	'id3info' => false,
 	'ogginfo' => false,
@@ -98,6 +99,18 @@ $SIG{CHLD} = sub {
 	my $PID = wait;
        	return(1)
 };
+
+# Purpose: use() a module if it's installed
+# Returns true if the use was successful, false otherwise
+sub tryuse
+{
+	my $mod = shift;
+	if(eval('use '.$mod.';1;'))
+	{
+		return true;
+	}
+	return;
+}
 
 # Purpose: Set the title of the xterm/screen
 # Usage: setTermTitle(TITLE);
@@ -177,6 +190,7 @@ sub depError
 			ogginfo => 'vorbis-tools',
 			'Audio::File' => 'libaudio-file-perl',
 			'Ogg::Vorbis::Header::PurePerl' => 'libogg-vorbis-header-pureperl-perl',
+			'Ogg::Vorbis::Header' => 'libogg-vorbis-header-perl',
 		};
 	# Multi-dimensional hash mapping distro -> command -> package
 	my %DepToPackage = (
@@ -717,17 +731,28 @@ sub GetMP3Info_id3info
 # Usage: my %Info = GetInfoFromVorbisHeader(FILE);
 sub GetInfoFromVorbisHeader
 {
-	my $File = shift;
+	my $File         = shift;
+	my $modType      = shift;
 	my %FileInfo;
 	my %Information;
-	my $hadInfo = false;
+	my $hadInfo      = false;
 	eval {
 		local *STDERR;
-		# Ogg::Vorbis::Header::PurePerl outputs junk to STDERR we don't want,
+		# Ogg::Vorbis::Header(::PurePerl) outputs junk to STDERR we don't want,
 		# so temporarily redirect it to the black hole
 		open(STDERR,'>','/dev/null');
 
-		my $ov = Ogg::Vorbis::Header::PurePerl->new($File);
+		my $modName = 'Ogg::Vorbis::Header';
+		my $ov;
+		if ($modType eq 'PurePerl')
+		{
+			$modName .= '::PurePerl';
+			$ov = Ogg::Vorbis::Header::PurePerl->load($File);
+		}
+		else
+		{
+			$ov = Ogg::Vorbis::Header->load($File);
+		}
 		foreach my $t (qw(title artist album tracknumber discnumber))
 		{
 			$Information{$t} = $ov->comment($t);
@@ -846,6 +871,10 @@ sub GetInfo
 
 		if ($File =~ /ogg$/i)
 		{
+			if ($Has{'Ogg::Vorbis::Header'})
+			{
+				push(@try,'Ogg::Vorbis::Header');
+			}
 			if ($Has{'Ogg::Vorbis::Header::PurePerl'})
 			{
 				push(@try,'Ogg::Vorbis::Header::PurePerl');
@@ -890,9 +919,13 @@ sub GetInfo
 			{
 				%FileInfo = GetInfoFromAudioFile($File);
 			}
-			elsif($t eq 'Ogg::Vorbis::Header::PurePerl')
+			elsif($t eq 'Ogg::Vorbis::Header')
 			{
 				%FileInfo = GetInfoFromVorbisHeader($File);
+			}
+			elsif($t eq 'Ogg::Vorbis::Header::PurePerl')
+			{
+				%FileInfo = GetInfoFromVorbisHeader($File,'PurePerl');
 			}
 			elsif($t eq 'id3v2')
 			{
@@ -1607,11 +1640,21 @@ sub debugInfo
 {
 	eval('use Digest::MD5; use IPC::Open3;');
 
-	my $format = '%-16s: %s'."\n";
+	my $format = '%-30s: %s'."\n";
 	printf($format,'mussort version',$VERSION);
 
+	my $md5 = Digest::MD5->new();
+	my $loc = realpath($0);
+	open(my $f,'<',$loc);
+	$md5->addfile($f);
+	my $digest = $md5->hexdigest;
+	close($f);
+	printf($format,'MD5:',$digest);
+
+	print "\nDependencies/library versions:\n";
+
 	# Get ogginfo/i3info versions
-	my($id3ver,$id3v2ver,$oggver) = ('missing','missing','missing');
+	my($id3ver,$id3v2ver,$oggver,$oggPerlVer,$oggPurePerlVer,$audioFileVer) = ('missing','missing','missing','missing','missing','missing');
 
 	if(InPath('id3info'))
 	{
@@ -1641,26 +1684,28 @@ sub debugInfo
 		$id3v2ver =~ s/^\s*id3v2\s*//;
 		chomp($id3v2ver);
 	}
-
-	printf($format,'ogginfo version',$oggver);
-	printf($format,'id3info version',$id3ver);
-	printf($format,'id3v2 version',$id3v2ver);
-	if(eval('use Audio::File;1;'))
+	if(tryuse('Ogg::Vorbis::Header::PurePerl'))
 	{
-		printf($format,'Audio::File',$Audio::File::VERSION);
+		$oggPurePerlVer = $Ogg::Vorbis::Header::PurePerl::VERSION;
 	}
-	else
+	if(tryuse('Ogg::Vorbis::Header'))
 	{
-		printf($format,'Audio::File','missing');
+		$oggPerlVer = $Ogg::Vorbis::Header::VERSION;
+		# ::Header whines if we don't call Inline::init()
+		eval { Inline::init(); };
+	}
+	if(tryuse('Audio::File'))
+	{
+		$audioFileVer = $Audio::File::VERSION;
 	}
 
-	my $md5 = Digest::MD5->new();
-	my $loc = realpath($0);
-	open(my $f,'<',$loc);
-	$md5->addfile($f);
-	my $digest = $md5->hexdigest;
-	close($f);
-	printf($format,'MD5:',$digest);
+	printf($format,'id3info',$id3ver);
+	printf($format,'id3v2',$id3v2ver);
+	printf($format,'ogginfo',$oggver);
+	printf($format,'Ogg::Vorbis::Header',$oggPerlVer);
+	printf($format,'Ogg::Vorbis::Header::PurePerl',$oggPurePerlVer);
+	printf($format,'Audio::File',$audioFileVer);
+
 	exit(0);
 }
 
@@ -1870,11 +1915,18 @@ sub cleanCache
 # Purpose: Initialize dependency lists
 sub initDeps
 {
-	if(eval('use Ogg::Vorbis::Header::PurePerl;1;'))
+	if(tryuse('Ogg::Vorbis::Header::PurePerl'))
 	{
 		$Has{'Ogg::Vorbis::Header::PurePerl'} = true;
 	}
-	if(eval('use Audio::File;1;'))
+	if(tryuse('Ogg::Vorbis::Header'))
+	{
+		$Has{'Ogg::Vorbis::Header'} = true;
+
+		# ::Header won't work properly if we don't call Inline::init()
+		eval { Inline::init(); };
+	}
+	if(tryuse('Audio::File'))
 	{
 		$Has{'Audio::File'} = true;
 	}
