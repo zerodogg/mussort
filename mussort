@@ -55,6 +55,7 @@ my %Has = (
 	'id3v2' => false,
 	'id3info' => false,
 	'ogginfo' => false,
+	'metaflac' => false,
 );
 
 # Dir hash, used for the final directory cleanup
@@ -350,6 +351,53 @@ sub GetMP3Info
 		$FileInfo{SetNo} = getTag($Information,'setNo');
 		$FileInfo{Ext} = 'mp3';
 		return(%FileInfo);
+	}
+	return;
+}
+
+# Purpose: Get information about a flac file
+# Usage: my %Info = GetFLACInfo(FILE);
+sub GetFLACInfo
+{
+	my $InfoFile = shift;
+	$InfoFile = realpath($InfoFile);
+	my %Information = ();
+	local *STDERR;
+	open(STDERR,'>','/dev/null');
+	my $PID = open2(my $Child_OUT, my $Child_IN, 'metaflac','--list', $InfoFile) or FatalError("Unable to open2(): $!\n");
+	my $hadInfo = false;
+	while(<$Child_OUT>)
+	{
+		next if not s/^\s*comment\[[^\]]+\]:\s*//;
+		chomp;
+		s/^\s+//g;
+		my $Opt = $_;
+		my $Val = $_;
+		$Opt =~ s/^\s*(.*)\s*=.*/$1/;
+		$Opt =~ tr[a-z][A-Z];
+		$Val =~ s/^.*=\s*(.*)\s*/$1/;
+		if($Val =~ /\S/)
+		{
+			if(not $Opt eq 'TRACKNUMBER')
+			{
+				$hadInfo = true;
+			}
+			$Information{$Opt} = $Val;
+		}
+	}
+	close($Child_OUT);
+	close($Child_IN);
+	$Information{TRACKNUMBER} =~ s#/.*##;
+	if ($hadInfo)
+	{
+		my %FileInfo;
+		$FileInfo{Title} = getTag(\%Information,'title');
+		$FileInfo{Band} = getTag(\%Information,'artist');
+		$FileInfo{Album} = getTag(\%Information,'album');
+		$FileInfo{Track} = getTag(\%Information,'track');
+		$FileInfo{SetNo} = getTag(\%Information,'setNo');
+		$FileInfo{Ext} = 'flac';
+		return %FileInfo;
 	}
 	return;
 }
@@ -802,6 +850,10 @@ sub GetInfoFromAudioFile
 	{
 		$FileInfo{Ext} = 'ogg';
 	}
+	elsif($File =~ /flac$/i)
+	{
+		$FileInfo{Ext} = 'flac';
+	}
 	else
 	{
 		FatalError("Unknown filetype: $File\n");
@@ -849,6 +901,8 @@ sub GetInfo
 	my $File = shift;
 	my $usedCached = false;
 	my %FileInfo;
+	my $AudioFilePreferred = $PreferAudioFile;
+
 	# We only use Audio::File for OGGs. id3info appears to be faster
 	# for MP3s
 	if(my $info = getInfoFromCache($File))
@@ -895,6 +949,12 @@ sub GetInfo
 				push(@try,'id3info');
 			}
 		}
+		elsif($File =~ /flac$/)
+		{
+			push(@try,'metaflac');
+			# Audio::File is faster than metaflac, so use it if possible
+			$AudioFilePreferred = 1;
+		}
 		else
 		{
 			FatalError("Unknown filetype: $File\n");
@@ -902,7 +962,7 @@ sub GetInfo
 
 		if ($Has{'Audio::File'})
 		{
-			if ($PreferAudioFile)
+			if ($AudioFilePreferred)
 			{
 				unshift(@try,'Audio::File');
 			}
@@ -942,6 +1002,10 @@ sub GetInfo
 			elsif($t eq 'ogg')
 			{
 				%FileInfo = GetOggVorbisInfo($File);
+			}
+			elsif($t eq 'metaflac')
+			{
+				%FileInfo = GetFLACInfo($File);
 			}
 			if (%FileInfo and 
 				IsValidTagValue($FileInfo{Title}) and
@@ -1468,7 +1532,7 @@ sub ProcessFile
 		}
 		return;
 	}
-	return if not $File =~ /\.(ogg|mp3)$/gi;
+	return if not $File =~ /\.(ogg|mp3|flac)$/gi;
 	# It might be a dangling symlink, if it is then just silently skip it
 	return if not -e $File;
 	my($NewName,$NewDir) = getNewFilePath($File,$BaseDir);
@@ -1657,7 +1721,7 @@ sub debugInfo
 	print "\nDependencies/library versions:\n";
 
 	# Get ogginfo/i3info versions
-	my($id3ver,$id3v2ver,$oggver,$oggPerlVer,$oggPurePerlVer,$audioFileVer) = ('missing','missing','missing','missing','missing','missing');
+	my($id3ver,$id3v2ver,$oggver,$oggPerlVer,$oggPurePerlVer,$audioFileVer,$metaflacver) = ('missing','missing','missing','missing','missing','missing','missing');
 
 	if(InPath('id3info'))
 	{
@@ -1687,6 +1751,13 @@ sub debugInfo
 		$id3v2ver =~ s/^\s*id3v2\s*//;
 		chomp($id3v2ver);
 	}
+	if(InPath('metaflac'))
+	{
+		open3(my $in, my $out,my $err, 'metaflac','--version');
+		$metaflacver = <$out>;
+		$metaflacver =~ s/^\s*metaflac\s*//;
+		chomp($metaflacver);
+	}
 	if(tryuse('Ogg::Vorbis::Header::PurePerl'))
 	{
 		$oggPurePerlVer = $Ogg::Vorbis::Header::PurePerl::VERSION;
@@ -1705,9 +1776,40 @@ sub debugInfo
 	printf($format,'id3info',$id3ver);
 	printf($format,'id3v2',$id3v2ver);
 	printf($format,'ogginfo',$oggver);
+	printf($format,'metaflac',$metaflacver);
 	printf($format,'Ogg::Vorbis::Header',$oggPerlVer);
 	printf($format,'Ogg::Vorbis::Header::PurePerl',$oggPurePerlVer);
 	printf($format,'Audio::File',$audioFileVer);
+
+	if ($audioFileVer eq 'missing' && $metaflacver eq 'missing')
+	{
+		print "Both Audio::File and metaflac are missing, FLAC support will be unavailable\n";
+	}
+	print "\nFormat support:\n";
+	my($mp3,$ogg,$flac) = ('no','no','no');
+	if ($audioFileVer ne 'missing')
+	{
+		($mp3,$ogg,$flac) = ('yes','yes','yes');
+	}
+	if ($id3ver ne 'missing' || $id3v2ver ne 'missing')
+	{
+		$mp3 = 'yes';
+	}
+	if ($oggver ne 'missing' || $oggPerlVer ne 'missing' || $oggPurePerlVer ne 'missing')
+	{
+		$ogg = 'yes';
+	}
+	if ($metaflacver ne 'missing')
+	{
+		$flac = 'yes';
+	}
+	printf($format,'MP3',$mp3);
+	printf($format,'OGG Vorbis',$ogg);
+	printf($format,'FLAC',$flac);
+	if ($mp3 eq 'no' || $ogg eq 'no' || $flac eq 'no')
+	{
+		print "Install missing dependencies to enable additional format support.\n";
+	}
 
 	exit(0);
 }
@@ -1933,7 +2035,7 @@ sub initDeps
 	{
 		$Has{'Audio::File'} = true;
 	}
-	foreach my $cmd (qw(id3v2 id3info ogginfo))
+	foreach my $cmd (qw(id3v2 id3info ogginfo metaflac))
 	{
 		if(InPath($cmd))
 		{
@@ -2006,6 +2108,7 @@ GetOptions (
 		PrintHelp('','--quiet','Suppress all non-error messages');
 		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
 		PrintHelp('','--fileinfo','Display parsed file information for the supplied file.');
+		PrintHelp('','--debuginfo','Print various technical information related to this installation of mussort');
 		exit(0);
 	},
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
@@ -2083,7 +2186,7 @@ mussort I<[OPTIONS]> I<dir1 dir2 ..>
 
 This is a simple tool that sorts a music collection.
 
-It recursively searches a directory for MP3 and OGG Vorbis files, processing
+It recursively searches a directory for MP3, OGG Vorbis and FLAC files, processing
 them one by one. It then reads the information from the file and puts them into
 a newly sorted directory tree, in the form
 I<base_directory/ARTIST/ALBUM/FILENAME>.  The files are renamed to
@@ -2254,10 +2357,14 @@ It requires only one for each format, however if multiple methods are available
 mussort will try each in turn if one of them fails.
 
 It needs:
+
 =over
 
 =item For MP3: id3v2 (best), id3info from id3lib, or Audio::File
+
 =item For Vorbis: Ogg::Vorbis::Header::PurePerl (best), ogginfo from vorbis-tools, or Audio::File
+
+=item For FLAC: Audio::File (best) or metaflac
 
 =back
 
@@ -2274,9 +2381,6 @@ You can safely remove this file any time if you want to (see also --cleancache).
 
 =head1 BUGS AND LIMITATIONS
 
-It does not support other formats than MP3 and Ogg vorbis at this time, however
-support for other formats is possible in the future.
-
 If you find a bug, please report it at L<http://random.zerodogg.org/mussort/bugs>.
 
 =head1 INCOMPATIBILITIES
@@ -2289,7 +2393,7 @@ B<mussort> is written by Eskild Hustvedt I<<eskild -at- zerodogg d.ot org>>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (C) Eskild Hustvedt 2007, 2008, 2009
+Copyright (C) Eskild Hustvedt 2007, 2008, 2009, 2010, 2011
 
 This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.

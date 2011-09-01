@@ -16,6 +16,7 @@ Version 0.3
 	preferred way to read ogg tags)
 - --keepdupes is now default instead of --largest
 - Added --fileinfo
+- Added FLAC support
 
 Version 0.2
 - Better dependency checking
