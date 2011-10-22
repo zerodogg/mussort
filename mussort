@@ -1025,7 +1025,7 @@ sub GetInfo
 
 	addToCache($File,\%FileInfo);
 
-	if ($CompilationDetection and defined $FileInfo{Album})
+	if ($CompilationDetection and defined $FileInfo{Album} and defined $FileInfo{Band})
 	{
 		if(not defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
 		{
