@@ -1662,7 +1662,9 @@ sub sortFiles
 	{
 		return -1;
 	}
-	return $a cmp $b;
+	my $sA = lc($a);
+	my $sB = lc($b);
+	return $sA cmp $sB;
 }
 
 # Purpose: Traverse a tree
