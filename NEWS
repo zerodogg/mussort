@@ -2,6 +2,7 @@ Version 0.3.1
 - Now ignores .git (improves speed when running in trees managed by git-annex)
 - Now consistently (case insensitively) sorts filenames internally before
     sorting them, fixing issues with certain files that "always" got renamed
+- Improved track-number fallback detection
 
 Version 0.3
 - Caching is now enabled by default, can be disabled with --no-cache

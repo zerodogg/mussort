@@ -1037,7 +1037,10 @@ sub GetInfo
 	}
 
 	# If we couldn't extract a track then try to extract it from the filename instead
-	if(not defined $FileInfo{Track} or not $FileInfo{Track} =~ /^\d+$/)
+	if(not defined $FileInfo{Track} or
+        not $FileInfo{Track} =~ /^\d+$/ or
+        $FileInfo{Track} eq '0'
+    )
 	{
 		my $Track = basename($File);
 		if ($Track =~ s/^(\d+)\D+.*$/$1/)
