@@ -413,7 +413,7 @@ sub getTag
 		artist => [ 'TPE1','TP1','ARTIST','Artist','artist' ],
 		album => [ 'TALB','TAL','ALBUM','Album', 'album' ],
 		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track', 'tracknumber' ],
-		setNo => [ 'TPA','DISCNUMBER', 'discnumber' ],
+		setNo => [ 'TPA','DISCNUMBER', 'discnumber','TPOS' ],
 	);
 	if(not defined $possibleTags{$tag})
 	{
