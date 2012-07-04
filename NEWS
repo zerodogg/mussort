@@ -1,3 +1,6 @@
+Version 0.3.1
+- Now ignores .git (improves speed when running in trees managed by git-annex)
+
 Version 0.3
 - Caching is now enabled by default, can be disabled with --no-cache
 - Added support for multi-disc albums

@@ -45,7 +45,7 @@ use constant {
 	DUPE_KEEP => 3,
 };
 
-our $VERSION = 0.3;
+our $VERSION = '0.3.1';
 
 # Hash of which information sources we have
 my %Has = (
@@ -1684,7 +1684,18 @@ sub ProcessTree
 	printv(M_STANDARD,"Processing: $Dir\n");
 	find({
 			wanted => sub { ProcessFile($File::Find::name,$Dir); },
-			preprocess => sub { return sort sortFiles	@_ },
+			preprocess => sub {
+                my @files;
+                foreach my $f (sort sortFiles @_)
+                {
+                    if ($f eq '.git')
+                    {
+                        next;
+                    }
+                    push(@files,$f);
+                }
+                return @files;
+            },
 		},
 		$Dir
 	);
