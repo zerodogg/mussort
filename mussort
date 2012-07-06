@@ -2210,7 +2210,7 @@ GetOptions (
 	'cleancache' => \&cleanCache,
 	'fileinfo=s' => sub {
 		shift; my $file = shift;
-		$file = realpath($file);
+		$file = realpath(dirname($file)).'/'.basename($file);
 		eval('use Data::Dumper qw(Dumper); $Data::Dumper::Indent = 0;');
 		initDeps();
 		if($cacheFile)
