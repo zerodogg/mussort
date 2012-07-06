@@ -616,6 +616,12 @@ sub loadCache
 				printv(M_STANDARD,'NOTICE: Your cache file is unreasonably large ('.$size.' MiB).'."\n");
 				printv(M_STANDARD,'        You may want to run "mussort --cleancache" to reduce the size'."\n");
 			}
+			$cachedInfo{cacheCompat} ||= 1;
+			if ($cachedInfo{cacheCompat} > 1)
+			{
+				FatalError('The mussort cache file is incompatible with this version of mussort'."\n".
+					'Upgrade to '.$cachedInfo{lastMussortVersion}.' or use --no-cache (or remove the cache file)'."\n");
+			}
 			return true;
 		}
 		elsif(ref($info))
@@ -650,6 +656,8 @@ sub writeCache
 			printv(M_STANDARD,'Writing cache file '.$cacheFile.'...');
 		}
 		$cachedInfo{lastMussortVersion} = $VERSION;
+		$cachedInfo{cacheFormat} = 1;
+		$cachedInfo{cacheCompat} = 1;
 		store(\%cachedInfo,$cacheFile) or $err = 1;
 		if ($err)
 		{
