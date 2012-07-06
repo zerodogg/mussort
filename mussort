@@ -474,11 +474,7 @@ sub GetInfoFromAudioFile
 # This is simply a reversed version of IsInvalidTagValue()
 sub IsValidTagValue
 {
-	if(IsInvalidTagValue(@_))
-	{
-		return false;
-	}
-	return true;
+	return ! IsInvalidTagValue(@_);
 }
 
 # Purpose: Check that the tag supplied is valid
