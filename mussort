@@ -541,7 +541,7 @@ sub addToCache
 			{
 				writeCache();
 			};
-			$cacheAdditions = false;
+			$cacheAdditions = 0;
 		}
 		else
 		{
