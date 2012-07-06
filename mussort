@@ -1963,7 +1963,9 @@ sub printv
 	{
 		print 'Debug: ';
 	}
-	print $_[0];
+	my $string = $_[0];
+	$string =~ s/\n+/\n/;
+	print $string;
 	# Flush STDOUT
 	$| = true;
 	$| = false;
