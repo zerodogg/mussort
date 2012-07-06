@@ -805,7 +805,14 @@ sub GetInfoFromVorbisHeader
 		if ($modType eq 'PurePerl')
 		{
 			$modName .= '::PurePerl';
-			$ov = Ogg::Vorbis::Header::PurePerl->load($File);
+			if(Ogg::Vorbis::Header::PurePerl->can('load'))
+			{
+				$ov = Ogg::Vorbis::Header::PurePerl->load($File);
+			}
+			else
+			{
+				$ov = Ogg::Vorbis::Header::PurePerl->new($File);
+			}
 		}
 		else
 		{
