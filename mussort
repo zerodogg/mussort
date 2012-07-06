@@ -579,6 +579,7 @@ sub GetInfo
 		{
 			printv(M_DEBUG,'Trying method: '.$t."\n");
 			$used = $t;
+			$quality = $optimalQuality;
 			if ($t eq 'Audio::File')
 			{
 				%FileInfo = GetInfoFromAudioFile($File);
