@@ -103,177 +103,9 @@ $SIG{CHLD} = sub {
        	return(1)
 };
 
-# Purpose: use() a module if it's installed
-# Returns true if the use was successful, false otherwise
-sub tryuse
-{
-	my $mod = shift;
-	if(eval('use '.$mod.';1;'))
-	{
-		return true;
-	}
-	return;
-}
-
-# Purpose: Set the title of the xterm/screen
-# Usage: setTermTitle(TITLE);
-sub setTermTitle
-{
-	return if not $verbosity > 0;
-	return if not defined $ENV{TERM};
-	my $title = shift;
-	if ($ENV{TERM} =~ /screen/)
-	{
-		print "\033k$title\033\\";
-	}
-	else
-	{
-		print "\033]0;$title\007";
-	}
-}
-
-# Purpose: Returns the mtime of a file
-# Usage: $mtime = mtime(file);
-# Note: It returns zero (not undef) if it can't read the mtime
-sub mtime
-{
-	my $file = shift;
-	my $mtime;
-	(undef,undef,undef,undef,undef,undef,undef,undef,undef,$mtime,undef,undef,undef) = stat($file);
-	if(not defined $mtime)
-	{
-		printv(M_DEBUG,'Failed to read mtime from file '.$file."\n");
-		return 0;
-	}
-	return $mtime;
-}
-
-# Purpose: Internal mkpath() that also modifies the directory cache
-# Usage: intMkpath(/path/to/create);
-sub intMkpath
-{
-	my $fullpath = shift;
-	if (-d $fullpath)
-	{
-		return;
-	}
-	my @pathsToCreate;
-	$fullpath=~ s{/+$}{};
-	while(not -d $fullpath)
-	{
-		unshift(@pathsToCreate,$fullpath);
-		$fullpath = dirname($fullpath);
-	}
-
-	foreach my $dir (@pathsToCreate)
-	{
-		mkdir($dir) or die('Failed to mkdir('.$dir.'): '.$!);
-		my $parent = dirname($dir);
-		foreach my $type (DIR_TYPE_PRIMARY,DIR_TYPE_SECONDARY)
-		{
-			if(defined $dirInfoCache[$type]->{$parent})
-			{
-				push(@{$dirInfoCache[$type]->{$parent}},basename($dir));
-				@{$dirInfoCache[$type]->{$parent}} = sort(@{$dirInfoCache[$type]->{$parent}});
-			}
-		}
-	}
-}
-
-# Purpose: Check for a dependency
-# Usage: depError(COMMAND);
-sub depError
-{
-	my $format = shift;
-	my $install = shift;
-	my $recommended = shift;
-	my $debPackages = {
-			id3info => 'libid3-dev',
-			id3v2 => 'id3v2',
-			ogginfo => 'vorbis-tools',
-			'Audio::File' => 'libaudio-file-perl',
-			'Ogg::Vorbis::Header::PurePerl' => 'libogg-vorbis-header-pureperl-perl',
-			'Ogg::Vorbis::Header' => 'libogg-vorbis-header-perl',
-		};
-	# Multi-dimensional hash mapping distro -> command -> package
-	my %DepToPackage = (
-		'/etc/apt/apt.conf.d/01ubuntu' => $debPackages,
-		'/etc/debian_version' => $debPackages,
-		'/etc/mandriva-release' => {
-			ogginfo => 'vorbis-tools',
-			id3info => 'id3lib',
-			id3v2 => 'id3v2',
-		},
-		'/etc/fedora-release' => {
-			ogginfo => 'vorbis-tools',
-			id3info => 'id3lib',
-			id3v2 => 'id3v2',
-		},
-	);
-	my $out = '';
-	my $depsMap = {};
-	foreach my $path (keys(%DepToPackage))
-	{
-		if (-e $path)
-		{
-			$depsMap = $DepToPackage{$path};
-		}
-	}
-	$out .= "You are missing a component for $format support.\n";
-	$out .= "Please install either of the following:\n";
-	foreach my $e (@{$install})
-	{
-		my $oe = $e;
-		if ($e eq $recommended)
-		{
-			$oe = '[RECOMMENDED] '.$oe;
-		}
-		if ($depsMap->{$e})
-		{
-			$out .= "$oe (from the $depsMap->{$e} package)\n";
-		}
-		else
-		{
-			if ($e =~ /::/)
-			{
-				$oe .= '(perl module)';
-			}
-			$out .= "$oe\n";
-		}
-	}
-	FatalError($out);
-}
-
-# Purpose: Output an error message
-# Usage: Error(MESSAGE);
-sub Error
-{
-	warn "Error: $_[0]\n";
-}
-
-# Purpose: Output a fatal error message (causes die())
-# Usage: FatalError(MESSAGE);
-sub FatalError
-{
-	die "Error: $_[0]\n";
-}
-
-# Purpose: Check if a directory is empty
-# Usage: DirIsEmpty(PATH);
-#  Returns 1 if it is empty, 0 if it isn't.
-sub DirIsEmpty
-{
-	my $dir = shift;
-	return 0 if not $dir;
-	opendir(TESTDIR, $dir);
-	my @TestDir = readdir(TESTDIR);
-	closedir(TESTDIR);
-	if(not scalar @TestDir > 2)
-	{
-		return 1;
-	}
-	return 0;
-}
+# --
+# File information
+# --
 
 # Purpose: Get information about an ogg vorbis file using ogginfo
 # Usage: my %Info = GetOggVorbisInfo(FILE);
@@ -402,280 +234,6 @@ sub GetFLACInfo
 		return %FileInfo;
 	}
 	return;
-}
-
-# Purpose: Fetch tag values from extracted data
-# Usage: value = getTag(infoHashRef, tagName);
-sub getTag
-{
-	my $info = shift;
-	my $tag = shift;
-	my %possibleTags = (
-		title => [ 'TIT2','TT2','TITLE','Title','title'],
-		artist => [ 'TPE1','TP1','ARTIST','Artist','artist' ],
-		album => [ 'TALB','TAL','ALBUM','Album', 'album' ],
-		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track', 'tracknumber' ],
-		setNo => [ 'TPA','DISCNUMBER', 'discnumber','TPOS' ],
-	);
-	if(not defined $possibleTags{$tag})
-	{
-		warn("Tried to fetch tag '$tag', but it wasn't found in possibleTags");
-		return;
-	}
-	my $content = 'Unknown';
-	foreach my $possible (@{$possibleTags{$tag}})
-	{
-		if(IsValidTagValue($info->{$possible}))
-		{
-			$content = $info->{$possible};
-			if ($tag ne 'setNo' && $tag ne 'track')
-			{
-				$content = CleanTag($content);
-				next if not IsValidTagValue($content);
-			}
-			last;
-		}
-	}
-	if ($tag eq 'track')
-	{
-		$content =~ s{/.*$}{}g;
-	}
-	elsif($tag eq 'setNo')
-	{
-		my $valid = false;
-		if ($content =~ m{^\d+/\d+$})
-		{
-			my $no = $content;
-			my $total = $content;
-			$no =~ s{/\d+$}{};
-			$total =~ s{^\d+/}{};
-			if ($no > 1 || $total > 1)
-			{
-				$valid = true;
-				$content = { total => $total, number => $no };
-			}
-		}
-		if(not $valid)
-		{
-			$content = {};
-		}
-	}
-	return $content;
-}
-
-# Purpose: Get information from cache if caching is enabled
-# Usage: %info = getInfoFromCache(FILE);
-sub getInfoFromCache
-{
-	my $file = shift;
-	if(not $readFromCache)
-	{
-		return;
-	}
-	if(defined $cacheFile)
-	{
-		if(defined($cachedInfo{mtime}->{$file}))
-		{
-			if (mtime($file) <= $cachedInfo{mtime}->{$file})
-			{
-				return $cachedInfo{info}->{$file};
-			}
-		}
-	}
-	return;
-}
-
-# Purpose: Add information to the cache if caching is enabled
-# Usage: addToCache($file,\%info);
-sub addToCache
-{
-	my $file = shift;
-	my $info = shift;
-
-	if(
-		defined $cachedInfo{mtime} && 
-		defined $cachedInfo{mtime}->{$file} && 
-		defined $cachedInfo{info} &&
-		defined $cachedInfo{info}->{$file} &&
-		(keys %{$cachedInfo{info}->{$file}} > 1)
-		)
-	{
-		if ($cachedInfo{mtime}->{$file} >= mtime($file))
-		{
-			return;
-		}
-		else
-		{
-			printv(M_DEBUG,'Re-evaluating cached information for '.$file."\n");
-		}
-	}
-
-	if(not (keys %{$info} > 1))
-	{
-		printv(M_DEBUG,'Refusing to add cached data for '.$file.': too little information'."\n");
-		return;
-	}
-
-	if(not defined $cachedInfo{info})
-	{
-		$cachedInfo{info} = {};
-	}
-	if(not defined $cachedInfo{mtime})
-	{
-		$cachedInfo{mtime} = {};
-	}
-
-	my $fileinfo = mtime($file);
-	if(not $fileinfo)
-	{
-		printv(M_VERYVERBOSE,'Failed to stat() '.$fileinfo.' - skipping adding it to the cache'."\n");
-		delete($cachedInfo{info}->{$file});
-	}
-	else
-	{
-		$cachedInfo{info}->{$file} = $info;
-		$cachedInfo{mtime}->{$file} = $fileinfo;
-		if ($cacheAdditions > 200)
-		{
-			eval
-			{
-				writeCache();
-			};
-			$cacheAdditions = 0;
-		}
-		else
-		{
-			$cacheAdditions++;
-		}
-	}
-}
-
-# Purpose: Remove cached information about a file
-# Usage: removeFromCache($file);
-sub removeFromCache
-{
-	my $file = shift;
-	delete($cachedInfo{info}->{$file});
-	delete($cachedInfo{mtime}->{$file});
-}
-
-# Purpose: Rename a file in the cache
-# Usage: cacheRename($oldName,$newName);
-sub cacheRename
-{
-	my $oldFile = shift;
-	if(not defined $cachedInfo{info} or not defined $cachedInfo{info}->{$oldFile})
-	{
-		return;
-	}
-	my $newFile = shift;
-	addToCache($newFile,$cachedInfo{info}->{$oldFile});
-	removeFromCache($oldFile);
-}
-
-# Purpose: Load cached information
-# Usage: loadCache();
-sub loadCache
-{
-	my $cleaning = shift;
-	printv(M_DEBUG,'Caching is enabled'."\n");
-	if(not defined $ENV{HOME})
-	{
-		die('The environment variable HOME is not set. Unable to continue. Set HOME or use --no-cache'."\n");
-	}
-	$cacheFile = $ENV{HOME}.'/.mussort-cache';
-	if (-e $cacheFile)
-	{
-		my $iFile = $cacheFile;
-		$iFile =~ s/^$ENV{HOME}\/*/~/;
-		if ($readFromCache)
-		{
-			printv(M_STANDARD,'Using cache from '.$cacheFile."\n");
-		}
-		else
-		{
-			printv(M_STANDARD,'Refreshing cache at '.$cacheFile."\n");
-		}
-		my $info = retrieve($cacheFile) or FatalError('Failed to retrieve() cache from '.$cacheFile.': '.$!);
-		if ($info && ref($info) eq 'HASH')
-		{
-			printv(M_DEBUG,"Read cached information\n");
-			%cachedInfo = %{$info};
-
-			if ( (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
-					and
-				 (not $cleaning) )
-			{
-				printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
-				printv(M_STANDARD,'        This message will only be displayed once.'."\n");
-			}
-			# If the cache file is over 25 MiB, display a warning
-			if(not $cleaning and -s $cacheFile > 26214400)
-			{
-				my $size = -s $cacheFile / 1024 / 1024;
-				printv(M_STANDARD,'NOTICE: Your cache file is unreasonably large ('.$size.' MiB).'."\n");
-				printv(M_STANDARD,'        You may want to run "mussort --cleancache" to reduce the size'."\n");
-			}
-			$cachedInfo{cacheCompat} ||= 1;
-			if ($cachedInfo{cacheCompat} > 1)
-			{
-				FatalError('The mussort cache file is incompatible with this version of mussort'."\n".
-					'Upgrade to '.$cachedInfo{lastMussortVersion}.' or use --no-cache (or remove the cache file)'."\n");
-			}
-			return true;
-		}
-		elsif(ref($info))
-		{
-			FatalError('retrieve() returned a useless reference of type: '.ref($info).' - try --no-cache or remove '.$cacheFile."\n");
-		}
-		return false;
-	}
-	else
-	{
-		printv(M_STANDARD,'Will create cache file at '.$cacheFile."\n");
-		return false;
-	}
-}
-
-# Purpose: Write the cache if there is data in it
-# Usage: writeCache();
-sub writeCache
-{
-	my $ignoreError = shift;
-	if(defined($cachedInfo{info}) && keys(%{$cachedInfo{info}}))
-	{
-		my $doneLevel = M_VERBOSE;
-		my $err;
-		if (-e $cacheFile)
-		{
-			printv(M_VERBOSE,'Writing updated cache to '.$cacheFile.'...');
-		}
-		else
-		{
-			$doneLevel = M_STANDARD;
-			printv(M_STANDARD,'Writing cache file '.$cacheFile.'...');
-		}
-		$cachedInfo{lastMussortVersion} = $VERSION;
-		$cachedInfo{cacheFormat} = 1;
-		$cachedInfo{cacheCompat} = 1;
-		store(\%cachedInfo,$cacheFile) or $err = 1;
-		if ($err)
-		{
-			if(not $ignoreError)
-			{
-				printv($doneLevel,'failed. ');
-				FatalError('Failed to store() cache in '.$cacheFile.': '.$err);
-			}
-			else
-			{
-				printv($doneLevel,'failed ('.$err.')'."\n");
-			}
-		}
-		else
-		{
-			printv($doneLevel,'done'."\n");
-		}
-	}
 }
 
 # Purpose: Get information about an mp3 file using id3v2
@@ -911,6 +469,34 @@ sub GetInfoFromAudioFile
 	return %FileInfo;
 }
 
+# Purpose: Check that the tag supplied is valid
+# Usage: bool = IsValidTagValue(VALUE);
+# This is simply a reversed version of IsInvalidTagValue()
+sub IsValidTagValue
+{
+	if(IsInvalidTagValue(@_))
+	{
+		return false;
+	}
+	return true;
+}
+
+# Purpose: Check that the tag supplied is valid
+# Usage: bool = IsInvalidTagValue(VALUE);
+# Returns false if it is valid, true if it isn't.
+sub IsInvalidTagValue
+{
+	my $value = shift;
+	if(not defined $value
+			or not length $value
+			or $value eq 'Unknown'
+			or $value eq '~')
+	{
+		return true;
+	}
+	return false;
+}
+
 # Purpose: Get information about a file
 # Usage: $FileInfo = GetInfo(pathtofile);
 sub GetInfo
@@ -1103,6 +689,65 @@ sub GetInfo
 	return(\%FileInfo);
 }
 
+# Purpose: Fetch tag values from extracted data
+# Usage: value = getTag(infoHashRef, tagName);
+sub getTag
+{
+	my $info = shift;
+	my $tag = shift;
+	my %possibleTags = (
+		title => [ 'TIT2','TT2','TITLE','Title','title'],
+		artist => [ 'TPE1','TP1','ARTIST','Artist','artist' ],
+		album => [ 'TALB','TAL','ALBUM','Album', 'album' ],
+		track => [ 'TRCK','TRK','TRACKNUMER', 'TRACK','Track', 'tracknumber' ],
+		setNo => [ 'TPA','DISCNUMBER', 'discnumber','TPOS' ],
+	);
+	if(not defined $possibleTags{$tag})
+	{
+		warn("Tried to fetch tag '$tag', but it wasn't found in possibleTags");
+		return;
+	}
+	my $content = 'Unknown';
+	foreach my $possible (@{$possibleTags{$tag}})
+	{
+		if(IsValidTagValue($info->{$possible}))
+		{
+			$content = $info->{$possible};
+			if ($tag ne 'setNo' && $tag ne 'track')
+			{
+				$content = CleanTag($content);
+				next if not IsValidTagValue($content);
+			}
+			last;
+		}
+	}
+	if ($tag eq 'track')
+	{
+		$content =~ s{/.*$}{}g;
+	}
+	elsif($tag eq 'setNo')
+	{
+		my $valid = false;
+		if ($content =~ m{^\d+/\d+$})
+		{
+			my $no = $content;
+			my $total = $content;
+			$no =~ s{/\d+$}{};
+			$total =~ s{^\d+/}{};
+			if ($no > 1 || $total > 1)
+			{
+				$valid = true;
+				$content = { total => $total, number => $no };
+			}
+		}
+		if(not $valid)
+		{
+			$content = {};
+		}
+	}
+	return $content;
+}
+
 # Purpose: Strip stuff we don't want in file/dir names
 # Usage: my $NewVar = CleanTag(OldVar);
 sub CleanTag
@@ -1146,6 +791,397 @@ sub CleanTag
 	return($Name);
 }
 
+# --
+# Main application
+# --
+
+# Purpose: use() a module if it's installed
+# Returns true if the use was successful, false otherwise
+sub tryuse
+{
+	my $mod = shift;
+	if(eval('use '.$mod.';1;'))
+	{
+		return true;
+	}
+	return;
+}
+
+# Purpose: Set the title of the xterm/screen
+# Usage: setTermTitle(TITLE);
+sub setTermTitle
+{
+	return if not $verbosity > 0;
+	return if not defined $ENV{TERM};
+	my $title = shift;
+	if ($ENV{TERM} =~ /screen/)
+	{
+		print "\033k$title\033\\";
+	}
+	else
+	{
+		print "\033]0;$title\007";
+	}
+}
+
+# Purpose: Returns the mtime of a file
+# Usage: $mtime = mtime(file);
+# Note: It returns zero (not undef) if it can't read the mtime
+sub mtime
+{
+	my $file = shift;
+	my $mtime;
+	(undef,undef,undef,undef,undef,undef,undef,undef,undef,$mtime,undef,undef,undef) = stat($file);
+	if(not defined $mtime)
+	{
+		printv(M_DEBUG,'Failed to read mtime from file '.$file."\n");
+		return 0;
+	}
+	return $mtime;
+}
+
+# Purpose: Internal mkpath() that also modifies the directory cache
+# Usage: intMkpath(/path/to/create);
+sub intMkpath
+{
+	my $fullpath = shift;
+	if (-d $fullpath)
+	{
+		return;
+	}
+	my @pathsToCreate;
+	$fullpath=~ s{/+$}{};
+	while(not -d $fullpath)
+	{
+		unshift(@pathsToCreate,$fullpath);
+		$fullpath = dirname($fullpath);
+	}
+
+	foreach my $dir (@pathsToCreate)
+	{
+		mkdir($dir) or die('Failed to mkdir('.$dir.'): '.$!);
+		my $parent = dirname($dir);
+		foreach my $type (DIR_TYPE_PRIMARY,DIR_TYPE_SECONDARY)
+		{
+			if(defined $dirInfoCache[$type]->{$parent})
+			{
+				push(@{$dirInfoCache[$type]->{$parent}},basename($dir));
+				@{$dirInfoCache[$type]->{$parent}} = sort(@{$dirInfoCache[$type]->{$parent}});
+			}
+		}
+	}
+}
+
+# Purpose: Check for a dependency
+# Usage: depError(COMMAND);
+sub depError
+{
+	my $format = shift;
+	my $install = shift;
+	my $recommended = shift;
+	my $debPackages = {
+			id3info => 'libid3-dev',
+			id3v2 => 'id3v2',
+			ogginfo => 'vorbis-tools',
+			'Audio::File' => 'libaudio-file-perl',
+			'Ogg::Vorbis::Header::PurePerl' => 'libogg-vorbis-header-pureperl-perl',
+			'Ogg::Vorbis::Header' => 'libogg-vorbis-header-perl',
+		};
+	# Multi-dimensional hash mapping distro -> command -> package
+	my %DepToPackage = (
+		'/etc/apt/apt.conf.d/01ubuntu' => $debPackages,
+		'/etc/debian_version' => $debPackages,
+		'/etc/mandriva-release' => {
+			ogginfo => 'vorbis-tools',
+			id3info => 'id3lib',
+			id3v2 => 'id3v2',
+		},
+		'/etc/fedora-release' => {
+			ogginfo => 'vorbis-tools',
+			id3info => 'id3lib',
+			id3v2 => 'id3v2',
+		},
+	);
+	my $out = '';
+	my $depsMap = {};
+	foreach my $path (keys(%DepToPackage))
+	{
+		if (-e $path)
+		{
+			$depsMap = $DepToPackage{$path};
+		}
+	}
+	$out .= "You are missing a component for $format support.\n";
+	$out .= "Please install either of the following:\n";
+	foreach my $e (@{$install})
+	{
+		my $oe = $e;
+		if ($e eq $recommended)
+		{
+			$oe = '[RECOMMENDED] '.$oe;
+		}
+		if ($depsMap->{$e})
+		{
+			$out .= "$oe (from the $depsMap->{$e} package)\n";
+		}
+		else
+		{
+			if ($e =~ /::/)
+			{
+				$oe .= '(perl module)';
+			}
+			$out .= "$oe\n";
+		}
+	}
+	FatalError($out);
+}
+
+# Purpose: Output an error message
+# Usage: Error(MESSAGE);
+sub Error
+{
+	warn "Error: $_[0]\n";
+}
+
+# Purpose: Output a fatal error message (causes die())
+# Usage: FatalError(MESSAGE);
+sub FatalError
+{
+	die "Error: $_[0]\n";
+}
+
+# Purpose: Check if a directory is empty
+# Usage: DirIsEmpty(PATH);
+#  Returns 1 if it is empty, 0 if it isn't.
+sub DirIsEmpty
+{
+	my $dir = shift;
+	return 0 if not $dir;
+	opendir(TESTDIR, $dir);
+	my @TestDir = readdir(TESTDIR);
+	closedir(TESTDIR);
+	if(not scalar @TestDir > 2)
+	{
+		return 1;
+	}
+	return 0;
+}
+
+# Purpose: Get information from cache if caching is enabled
+# Usage: %info = getInfoFromCache(FILE);
+sub getInfoFromCache
+{
+	my $file = shift;
+	if(not $readFromCache)
+	{
+		return;
+	}
+	if(defined $cacheFile)
+	{
+		if(defined($cachedInfo{mtime}->{$file}))
+		{
+			if (mtime($file) <= $cachedInfo{mtime}->{$file})
+			{
+				return $cachedInfo{info}->{$file};
+			}
+		}
+	}
+	return;
+}
+
+# Purpose: Add information to the cache if caching is enabled
+# Usage: addToCache($file,\%info);
+sub addToCache
+{
+	my $file = shift;
+	my $info = shift;
+
+	if(
+		defined $cachedInfo{mtime} && 
+		defined $cachedInfo{mtime}->{$file} && 
+		defined $cachedInfo{info} &&
+		defined $cachedInfo{info}->{$file} &&
+		(keys %{$cachedInfo{info}->{$file}} > 1)
+		)
+	{
+		if ($cachedInfo{mtime}->{$file} >= mtime($file))
+		{
+			return;
+		}
+		else
+		{
+			printv(M_DEBUG,'Re-evaluating cached information for '.$file."\n");
+		}
+	}
+
+	if(not (keys %{$info} > 1))
+	{
+		printv(M_DEBUG,'Refusing to add cached data for '.$file.': too little information'."\n");
+		return;
+	}
+
+	if(not defined $cachedInfo{info})
+	{
+		$cachedInfo{info} = {};
+	}
+	if(not defined $cachedInfo{mtime})
+	{
+		$cachedInfo{mtime} = {};
+	}
+
+	my $fileinfo = mtime($file);
+	if(not $fileinfo)
+	{
+		printv(M_VERYVERBOSE,'Failed to stat() '.$fileinfo.' - skipping adding it to the cache'."\n");
+		delete($cachedInfo{info}->{$file});
+	}
+	else
+	{
+		$cachedInfo{info}->{$file} = $info;
+		$cachedInfo{mtime}->{$file} = $fileinfo;
+		if ($cacheAdditions > 200)
+		{
+			eval
+			{
+				writeCache();
+			};
+			$cacheAdditions = 0;
+		}
+		else
+		{
+			$cacheAdditions++;
+		}
+	}
+}
+
+# Purpose: Remove cached information about a file
+# Usage: removeFromCache($file);
+sub removeFromCache
+{
+	my $file = shift;
+	delete($cachedInfo{info}->{$file});
+	delete($cachedInfo{mtime}->{$file});
+}
+
+# Purpose: Rename a file in the cache
+# Usage: cacheRename($oldName,$newName);
+sub cacheRename
+{
+	my $oldFile = shift;
+	if(not defined $cachedInfo{info} or not defined $cachedInfo{info}->{$oldFile})
+	{
+		return;
+	}
+	my $newFile = shift;
+	addToCache($newFile,$cachedInfo{info}->{$oldFile});
+	removeFromCache($oldFile);
+}
+
+# Purpose: Load cached information
+# Usage: loadCache();
+sub loadCache
+{
+	my $cleaning = shift;
+	printv(M_DEBUG,'Caching is enabled'."\n");
+	if(not defined $ENV{HOME})
+	{
+		die('The environment variable HOME is not set. Unable to continue. Set HOME or use --no-cache'."\n");
+	}
+	$cacheFile = $ENV{HOME}.'/.mussort-cache';
+	if (-e $cacheFile)
+	{
+		my $iFile = $cacheFile;
+		$iFile =~ s/^$ENV{HOME}\/*/~/;
+		if ($readFromCache)
+		{
+			printv(M_STANDARD,'Using cache from '.$cacheFile."\n");
+		}
+		else
+		{
+			printv(M_STANDARD,'Refreshing cache at '.$cacheFile."\n");
+		}
+		my $info = retrieve($cacheFile) or FatalError('Failed to retrieve() cache from '.$cacheFile.': '.$!);
+		if ($info && ref($info) eq 'HASH')
+		{
+			printv(M_DEBUG,"Read cached information\n");
+			%cachedInfo = %{$info};
+
+			if ( (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
+					and
+				 (not $cleaning) )
+			{
+				printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
+				printv(M_STANDARD,'        This message will only be displayed once.'."\n");
+			}
+			# If the cache file is over 25 MiB, display a warning
+			if(not $cleaning and -s $cacheFile > 26214400)
+			{
+				my $size = -s $cacheFile / 1024 / 1024;
+				printv(M_STANDARD,'NOTICE: Your cache file is unreasonably large ('.$size.' MiB).'."\n");
+				printv(M_STANDARD,'        You may want to run "mussort --cleancache" to reduce the size'."\n");
+			}
+			$cachedInfo{cacheCompat} ||= 1;
+			if ($cachedInfo{cacheCompat} > 1)
+			{
+				FatalError('The mussort cache file is incompatible with this version of mussort'."\n".
+					'Upgrade to '.$cachedInfo{lastMussortVersion}.' or use --no-cache (or remove the cache file)'."\n");
+			}
+			return true;
+		}
+		elsif(ref($info))
+		{
+			FatalError('retrieve() returned a useless reference of type: '.ref($info).' - try --no-cache or remove '.$cacheFile."\n");
+		}
+		return false;
+	}
+	else
+	{
+		printv(M_STANDARD,'Will create cache file at '.$cacheFile."\n");
+		return false;
+	}
+}
+
+# Purpose: Write the cache if there is data in it
+# Usage: writeCache();
+sub writeCache
+{
+	my $ignoreError = shift;
+	if(defined($cachedInfo{info}) && keys(%{$cachedInfo{info}}))
+	{
+		my $doneLevel = M_VERBOSE;
+		my $err;
+		if (-e $cacheFile)
+		{
+			printv(M_VERBOSE,'Writing updated cache to '.$cacheFile.'...');
+		}
+		else
+		{
+			$doneLevel = M_STANDARD;
+			printv(M_STANDARD,'Writing cache file '.$cacheFile.'...');
+		}
+		$cachedInfo{lastMussortVersion} = $VERSION;
+		$cachedInfo{cacheFormat} = 1;
+		$cachedInfo{cacheCompat} = 1;
+		store(\%cachedInfo,$cacheFile) or $err = 1;
+		if ($err)
+		{
+			if(not $ignoreError)
+			{
+				printv($doneLevel,'failed. ');
+				FatalError('Failed to store() cache in '.$cacheFile.': '.$err);
+			}
+			else
+			{
+				printv($doneLevel,'failed ('.$err.')'."\n");
+			}
+		}
+		else
+		{
+			printv($doneLevel,'done'."\n");
+		}
+	}
+}
+
 # Purpose: Get the new filename for the file
 # Usage: my $NewFileName = GetNewFileName(InfoHash);
 sub GetNewFileName
@@ -1181,34 +1217,6 @@ sub GetNewFileName
 	}
 
 	return($NewName);
-}
-
-# Purpose: Check that the tag supplied is valid
-# Usage: bool = IsInvalidTagValue(VALUE);
-# Returns false if it is valid, true if it isn't.
-sub IsInvalidTagValue
-{
-	my $value = shift;
-	if(not defined $value
-			or not length $value
-			or $value eq 'Unknown'
-			or $value eq '~')
-	{
-		return true;
-	}
-	return false;
-}
-
-# Purpose: Check that the tag supplied is valid
-# Usage: bool = IsValidTagValue(VALUE);
-# This is simply a reversed version of IsInvalidTagValue()
-sub IsValidTagValue
-{
-	if(IsInvalidTagValue(@_))
-	{
-		return false;
-	}
-	return true;
 }
 
 # Purpose: Get a list of directories in a directory - possibly cached
