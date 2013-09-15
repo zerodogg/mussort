@@ -27,6 +27,7 @@ use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
 use POSIX qw(ceil);
+use Pod::Usage;
 use Storable;
 use constant { 
 	true => 1, 
@@ -2211,6 +2212,7 @@ GetOptions (
 		PrintHelp('','--debuginfo','Print various technical information related to this installation of mussort');
 		exit(0);
 	},
+	'manual' => sub { pod2usage(-verbose => 2 ); exit (0); },
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
 	'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
 	'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
