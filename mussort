@@ -664,13 +664,13 @@ sub GetInfo
 		addToCache($File,\%FileInfo);
 	}
 
-	if ($CompilationDetection and defined $FileInfo{Album} and defined $FileInfo{Band})
+	if ($CompilationDetection and defined $FileInfo{Album})
 	{
-		if(not defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
+		if(not defined $CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})})
 		{
-			$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}} = [];
+			$CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})} = [];
 		}
-		push(@{$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}}},$File);
+		push(@{$CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})}},$File);
 	}
 
 	# If we couldn't extract a track then try to extract it from the filename instead
