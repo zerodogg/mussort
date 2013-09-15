@@ -1186,7 +1186,6 @@ sub writeCache
 # Usage: my $log10 = log10(number);
 sub log10
 {
-	}
 	my $n = shift;
 	return log($n)/log(10);
 }
