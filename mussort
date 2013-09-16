@@ -2192,6 +2192,7 @@ GetOptions (
 		print "mussort version $VERSION\n\n";
 		print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
 		PrintHelp('-h','--help','Display this help screen');
+		PrintHelp('','--man','Display the manpage and exit');
 		PrintHelp('','--version','Display version information');
 		PrintHelp('-k','--keepdupes','Keep and sort duplicates (default)');
 		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (overrides --keepdues)');
@@ -2212,7 +2213,7 @@ GetOptions (
 		PrintHelp('','--debuginfo','Print various technical information related to this installation of mussort');
 		exit(0);
 	},
-	'manual' => sub { pod2usage(-verbose => 2 ); exit (0); },
+	'man' => sub { pod2usage(-exitval => 0, -verbose => 2 ); },
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
 	'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
 	'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
@@ -2312,6 +2313,10 @@ up subsequent invocations significantly
 
 Display a short help screen and exit
 
+=item B<--man>
+
+Display the manpage and exit
+
 =item B<--version>
 
 Display version information and exit
@@ -2372,7 +2377,7 @@ without moving them first, sorting them in an internal data structure, then it
 will attempt to detect compilation albums and re-sort members of the
 compilation albums before finally moving files on-disk. Compilation albums
 are placed into a directory tree matching I<ALBUM/FILENAME> instead of
-I<ARTIST/ALBUM/FILENAME>.
+I<ARTIST/ALBUM/FILENAME>. The ALBUM detection is done case insensitive.
 
 Note that this mode is a bit slower than normal mode, and it will take a bit
 longer before any actual changes are done. This is because it needs to search
@@ -2393,6 +2398,12 @@ mode, as --compilation won't output anything until after all files have been rea
 
 If supplied twice, it will also output information about which file is currently
 being read.
+
+=item B<--dryrun>
+
+Don't do any file move, or deletion. Just display what will happen.
+Useful in case you like to see what would be the result of the options, but don't 
+actually do it.
 
 =item B<--quiet>
 
