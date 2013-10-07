@@ -98,7 +98,7 @@ my $readFromCache = true;
 # Bool, true if we should add all directories to the clean process
 my $addAllCleanTree = false;
 # Bool, true if we just output what will be done, don't actually do anything
-my $DryRun;
+my $DryRunMove;
 
 # This makes sure the children are slayed properly
 $SIG{CHLD} = sub {
@@ -1554,7 +1554,7 @@ sub RenameFile
 	}
 	# Output info and do the actual renaming
 	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
-	unless(defined $DryRun)
+	unless(defined $DryRunMove)
 	{
 		move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 		cacheRename($OrigFile,$NewFile);
@@ -2233,7 +2233,8 @@ GetOptions (
 	'nocache|no-cache' => sub { $cacheFile = false },
 	'refresh-cache' => sub { $readFromCache = false },
 	'v|verbose+' => \$verbosity,
-	'dryrun' => \$DryRun,
+	'dryrun' => sub { $DryRunMove = true; $cacheFile = false },
+	'dryrunmove' => sub { $DryRunMove = true },
 	'q|quiet' => sub { $verbosity = 0 },
 	'cleantree' => $addAllCleanTree,
 	'cleancache' => \&cleanCache,
