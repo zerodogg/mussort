@@ -2204,6 +2204,8 @@ GetOptions (
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
+		PrintHelp('','--dryrunmove', 'does not actually move the files, but still updates the cache');
+		PrintHelp('','--dryrun', 'don\'t move the files and don\'t use the cache. Same as --dryrunmove and --no-cache');
 		PrintHelp('','--no-cache','Disable file information caching');
 		PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
 		PrintHelp('','--refresh-cache','Refresh the cache (use the cache in a write-only mode)');
@@ -2400,11 +2402,20 @@ mode, as --compilation won't output anything until after all files have been rea
 If supplied twice, it will also output information about which file is currently
 being read.
 
-=item B<--dryrun>
+=item B<--dryrunmove>
 
 Don't do any file move, or deletion. Just display what will happen.
+
+The cache file are updated anyway, so if you don't want to have cache update, 
+please use I<--dryrun>
+
 Useful in case you like to see what would be the result of the options, but don't 
 actually do it.
+
+
+=item B<--dryrun>
+
+Combines I<--dryrunmove> and I<--no-cache>
 
 =item B<--quiet>
 
