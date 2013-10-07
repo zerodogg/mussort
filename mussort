@@ -1638,8 +1638,8 @@ sub ProcessFile
 # Usage: my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,Compilation?);
 sub getNewFilePath
 {
-	my($File,$BaseDir,$Compilation,$MaxNum) = @_;
-#	my($File,$BaseDir,$Compilation) = @_;
+#	my($File,$BaseDir,$Compilation,$MaxNum) = @_;
+	my($File,$BaseDir,$Compilation) = @_;
 	# Get info
 	my $FileInfo = GetInfo($File);
 	# Build a new filename for the music file
@@ -1700,8 +1700,8 @@ sub ProcessCompilation
 				}
 			}
 		}
-		printv(M_VERBOSE, "Found ".scalar(@files)." files in album ".$album."\n");
-#		push(@compilationRename,{
+#		printv(M_VERBOSE, "Found ".scalar(@files)." files in album ".$album."\n");
+		push(@compilationRename,{
 				files => \@files,
 				album => $album,
 #				count => scalar(@files),
@@ -1717,7 +1717,8 @@ sub ProcessCompilation
 		foreach my $File (@{$compilation})
 		{
 			# Build a new filename for the music file
-			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true,$compilationRef->{count});
+#			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true,$compilationRef->{count});
+			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
 			next if not defined $NewDir or not defined $NewName;
 			RenameFile($File,$NewDir.'/'.$NewName,$BaseDir);
 		}
