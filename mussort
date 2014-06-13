@@ -1192,6 +1192,100 @@ sub writeCache
 	}
 }
 
+# Purpose: Retrieve a generated filename or dirname of at most 254 characters
+# Usage: name = GetNameOfLength(\@names, JOINCHAR,EXT);
+# \@names is an arrayref containing the name components
+# JOINCHAR is the character to join the contents of \@names with
+# EXT is the extension (sans the .) to add, can be left undef for no extension
+sub GetNameOfLength
+{
+	# The names arrayref
+	my $names     = shift;
+	# The join character
+	my $joiner    = shift;
+	# The extension, if any
+	my $extension = shift;
+
+	# Generate a name
+	my $NewName;
+	if ($extension)
+	{
+		$NewName = join($joiner,@{$names}).'.'.$extension;
+	}
+	else
+	{
+		$NewName = join($joiner,@{$names});
+	}
+
+	# Keep track of the number of times through the loop
+	my $loopC = 0;
+	# The maximum length the bare string (sans extension) can be
+	my $maxBareLength;
+	if ($extension)
+	{
+		# 253 because the . in the Ext takes one character (254-1)
+		$maxBareLength = 253-length($extension);
+	}
+	else
+	{
+		$maxBareLength = 254;
+	}
+	# Generate a string of the proper length
+	while(length($NewName) > $maxBareLength)
+	{
+		# Figure out how many characters we need to get
+		my $need = length($NewName)-$maxBareLength;
+		# The largest component of the names-array
+		my $largestI;
+		# The length of the above component string
+		my $largestLen = 0;
+		# Loop through each component to figure out which is the largest
+		for my $i(0..@{$names})
+		{
+			next if ! defined($names->[$i]);
+			if (length($names->[$i]) > $largestLen)
+			{
+				$largestI = $i;
+				$largestLen = length($names->[$i]);
+			}
+		}
+		# Figure out how many characters we need to remove, the +3 is for the three dots
+		# we add when the component is too long
+		my $reclaim = $need+3;
+		# During the first 10 loops reclaim at most 100 characters from a single string
+		if ($reclaim > 100 && $loopC < 10)
+		{
+			printv(M_DEBUG,'GetNameOfLength: Need '.$need.' characters, setting current value to 100'."\n");
+			$reclaim = 100;
+		}
+		printv(M_DEBUG,'GetNameOfLength: Need to reclaim '.$reclaim.' characters from string of '.$largestLen." characters\n");
+		# Find the index to cut at
+		my $index = $largestLen-$reclaim;
+		printv(M_DEBUG,'GetNameOfLength: Reclaiming at index '.$index."\n");
+		# Cut the string
+		$names->[$largestI] = substr($names->[$largestI],0,$index).'...';
+
+		# Generate a new filename
+		if ($extension)
+		{
+			$NewName = join($joiner,@{$names}).'.'.$extension;
+		}
+		else
+		{
+			$NewName = join($joiner,@{$names});
+		}
+
+		# Bump the loop counter
+		$loopC++;
+		# Abort if we've tried 50 times
+		if ($loopC > 50)
+		{
+			FatalError('Failed to generate filename. Ended up with "'.$NewName.'", but kept looping to generate a better name.');
+		}
+	}
+	return $NewName;
+}
+
 # Purpose: Get the new filename for the file
 # Usage: my $NewFileName = GetNewFileName(InfoHash);
 sub GetNewFileName
@@ -1202,7 +1296,8 @@ sub GetNewFileName
 	{
 		return;
 	}
-	my $NewName = $Info->{Band}.'-'.$Info->{Title}.'.'.$Info->{Ext};
+	my @NameComponents;
+	push(@NameComponents, $Info->{Band},$Info->{Title});
 	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/)
 	{
 		if(not $Info->{Track} =~ /\d\d/)
@@ -1212,7 +1307,7 @@ sub GetNewFileName
 		# Disallow 00/0
 		if($Info->{Track} > 0 )
 		{
-			$NewName = "$Info->{Track}-$NewName";
+			unshift(@NameComponents,$Info->{Track});
 		}
 	}
 
@@ -1223,9 +1318,10 @@ sub GetNewFileName
 		$Info->{SetNo}->{number} != 0
 		)
 	{
-		$NewName = 'CD'.$Info->{SetNo}->{number}.'-'.$NewName;
+		unshift(@NameComponents,'CD'.$Info->{SetNo}->{number});
 	}
 
+	my $NewName = GetNameOfLength(\@NameComponents,'-',$Info->{Ext});
 	return($NewName);
 }
 
@@ -1296,6 +1392,15 @@ sub GetNewDirName
 	{
 		$FirstDir = $Info->{Band};
 		$SecondDir = $Info->{Album};
+	}
+
+	if(defined($FirstDir) && length($FirstDir))
+	{
+		$FirstDir = GetNameOfLength([ $FirstDir ],'',undef);
+	}
+	if(defined($SecondDir) && length($SecondDir))
+	{
+		$SecondDir = GetNameOfLength([ $SecondDir ],'',undef);
 	}
 	
 	if($DirInsensitive)

@@ -5,6 +5,7 @@ Version 0.3.1
 - Improved track-number fallback detection
 - Various improvements when operating on a symlink-heavy collection (ie.
     a collection managed by git-annex)
+- Fixed problems with very long names
 
 Version 0.3
 - Caching is now enabled by default, can be disabled with --no-cache
