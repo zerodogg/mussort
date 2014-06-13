@@ -19,6 +19,7 @@
 
 use strict;
 use warnings;
+use utf8;
 use File::Find;
 use File::Basename qw(dirname basename);
 use File::Path qw(rmtree);
@@ -659,7 +660,7 @@ sub GetInfo
 
 	printv(M_DEBUG,'Using values from '.$used."\n");
 
-	if ($quality == $optimalQuality)
+	if ($quality == $optimalQuality && $used ne 'cache')
 	{
 		addToCache($File,\%FileInfo);
 	}
@@ -1105,25 +1106,35 @@ sub loadCache
 			printv(M_DEBUG,"Read cached information\n");
 			%cachedInfo = %{$info};
 
-			if ( (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
-					and
-				 (not $cleaning) )
+			# Data in these older caches are in many cases invalid, so to be on the
+			# safe side we ignore it.
+			if(not defined $cachedInfo{cacheCompat})
 			{
-				printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
-				printv(M_STANDARD,'        This message will only be displayed once.'."\n");
+				printv(M_STANDARD,'Note: Cache format outdated, ignoring cached data'."\n");
+				%cachedInfo = ();
 			}
-			# If the cache file is over 25 MiB, display a warning
-			if(not $cleaning and -s $cacheFile > 26214400)
+			else
 			{
-				my $size = -s $cacheFile / 1024 / 1024;
-				printv(M_STANDARD,'NOTICE: Your cache file is unreasonably large ('.$size.' MiB).'."\n");
-				printv(M_STANDARD,'        You may want to run "mussort --cleancache" to reduce the size'."\n");
-			}
-			$cachedInfo{cacheCompat} ||= 1;
-			if ($cachedInfo{cacheCompat} > 1)
-			{
-				FatalError('The mussort cache file is incompatible with this version of mussort'."\n".
-					'Upgrade to '.$cachedInfo{lastMussortVersion}.' or use --no-cache (or remove the cache file)'."\n");
+				if ( (not defined($cachedInfo{lastMussortVersion}) or $cachedInfo{lastMussortVersion} ne $VERSION)
+						and
+					 (not $cleaning) )
+				{
+					printv(M_STANDARD,'NOTICE: You appear to have recently upgraded mussort, you may want to run "mussort --cleancache"'."\n");
+					printv(M_STANDARD,'        This message will only be displayed once.'."\n");
+				}
+				# If the cache file is over 25 MiB, display a warning
+				if(not $cleaning and -s $cacheFile > 26214400)
+				{
+					my $size = -s $cacheFile / 1024 / 1024;
+					printv(M_STANDARD,'NOTICE: Your cache file is unreasonably large ('.$size.' MiB).'."\n");
+					printv(M_STANDARD,'        You may want to run "mussort --cleancache" to reduce the size'."\n");
+				}
+				$cachedInfo{cacheCompat} ||= 1;
+				if ($cachedInfo{cacheCompat} > 1)
+				{
+					FatalError('The mussort cache file is incompatible with this version of mussort'."\n".
+						'Upgrade to '.$cachedInfo{lastMussortVersion}.' or use --no-cache (or remove the cache file)'."\n");
+				}
 			}
 			return true;
 		}
@@ -1504,7 +1515,7 @@ sub RenameFile
 		if ($dupeAction == DUPE_REPLACE)
 		{
 			# Check which file is the largest
-			if(-s $NewFile > -s $OrigFile)
+			if(-s realpath($NewFile) > -s realpath($OrigFile))
 			{
 				printv(M_STANDARD,"Remove: $OrigFile\n");
 				unlink($OrigFile);
