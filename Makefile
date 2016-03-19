@@ -1,5 +1,6 @@
 # mussort makefile
 
+SHELL=/bin/bash
 VERSION=$(shell ./mussort --version|perl -pi -e 's/^\D+//; chomp')
 
 ifndef prefix
@@ -15,6 +16,7 @@ DISTFILES = COPYING Makefile mussort NEWS TODO mussort.1
 
 # Install mussort
 install:
+	[ ! -e mussort.1 ] && which pod2man &>/dev/null && make --no-print-directory man
 	mkdir -p "$(BINDIR)"
 	cp mussort "$(BINDIR)"
 	chmod 755 "$(BINDIR)/mussort"
