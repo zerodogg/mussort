@@ -1,4 +1,4 @@
-Version 0.3.1
+Version 0.4
 - Now ignores .git (improves speed when running in trees managed by git-annex)
 - Now consistently (case insensitively) sorts filenames internally before
     sorting them, fixing issues with certain files that "always" got renamed
@@ -6,6 +6,8 @@ Version 0.3.1
 - Various improvements when operating on a symlink-heavy collection (ie.
     a collection managed by git-annex)
 - Fixed problems with very long names
+- Added a dry run mode (by Achim Schaefer)
+- Will now attempt to move folder/cover images as well
 
 Version 0.3
 - Caching is now enabled by default, can be disabled with --no-cache
