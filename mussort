@@ -1657,6 +1657,16 @@ sub RenameFile
 	unless(defined $DryRunMove)
 	{
 		move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
+		foreach my $fname (qw(folder cover))
+		{
+			foreach my $fmt (qw(jpg png jpeg))
+			{
+				if (-e dirname($OrigFile).'/'.$fname.'.'.$fmt && ! -e dirname($NewFile).'/'.$fname.'.'.$fmt)
+				{
+					move(dirname($OrigFile).'/'.$fname.'.'.$fmt,dirname($NewFile).'/'.$fname.'.'.$fmt);
+				}
+			}
+		}
 		cacheRename($OrigFile,$NewFile);
 		$cleanTree{dirname($OrigFile)} = true;
 	}
