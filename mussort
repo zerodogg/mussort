@@ -2458,9 +2458,9 @@ combine I<--insensitive> with I<--consistent>.
 Makes mussort generate consistent directory names. This is useful to ensure that
 two collections on different machines have the exact same directory layout, so
 that they can be rsynced easily. It avoids directory names that are identical
-except for the casing, and is also consistent between runs, and accross
+except for the casing, and is also consistent between runs, and across
 different machines. Unlike I<-i>, the performance penalty is almost
-nonexistant.
+nonexistent.
 
 You can combine this option with I<--compilation> if you want to. Note that
 I<--compilation> changes the directory layout, so a collection sorted without
