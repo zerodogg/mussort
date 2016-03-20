@@ -1477,7 +1477,7 @@ sub GetNewDirName_insensitive
 	{
 		$FirstDir = getSingleInsensitiveDirName($FirstDir,$BaseDir,DIR_TYPE_PRIMARY);
 
-		if(defined $SecondDir and length $SecondDir and -d $BaseDir . '/' . $FirstDir)
+		if(defined $SecondDir && length $SecondDir && -d $BaseDir . '/' . $FirstDir)
 		{
 			$SecondDir = getSingleInsensitiveDirName($SecondDir,$BaseDir.'/'.$FirstDir,DIR_TYPE_SECONDARY);
 		}
