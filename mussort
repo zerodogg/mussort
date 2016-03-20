@@ -2598,6 +2598,8 @@ You can safely remove this file any time if you want to (see also --cleancache).
 
 If you find a bug, please report it at L<http://random.zerodogg.org/mussort/bugs>.
 
+I<mussort> will not work on DOS filesystems, such as VFAT, because it will create files with colons (:). Unix-style filesystems, like ext*, xfs, ufs, btrfs, zfs etc. are all fully supported.
+
 =head1 INCOMPATIBILITIES
 
 None known.
