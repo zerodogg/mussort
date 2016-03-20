@@ -28,8 +28,8 @@ use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
 use Storable;
-use constant { 
-	true => 1, 
+use constant {
+	true => 1,
 	false => 0,
 
 	# Verbosity levels
@@ -88,7 +88,7 @@ my $DirInsensitive = false;
 my $DirConsistent = false;
 # Bool, true if we should silently skip files (not outputting information about it)
 my $SilentSkip = false;
-# Bool, true if we should 
+# Bool, true if we should
 my $CompilationDetection;
 # Bool, true or a string if caching is enabled (string would be path to the cache file)
 my $cacheFile = true;
@@ -997,8 +997,8 @@ sub addToCache
 	my $info = shift;
 
 	if(
-		defined $cachedInfo{mtime} && 
-		defined $cachedInfo{mtime}->{$file} && 
+		defined $cachedInfo{mtime} &&
+		defined $cachedInfo{mtime}->{$file} &&
 		defined $cachedInfo{info} &&
 		defined $cachedInfo{info}->{$file} &&
 		(keys %{$cachedInfo{info}->{$file}} > 1)
@@ -1371,12 +1371,12 @@ sub GetNewDirName
 	my $Info = shift;
 	my $BaseDir = shift;
 	my $Compilation = shift;
-	
+
 	if(IsInvalidTagValue($Info->{Band}))
 	{
 		return;
 	}
-	
+
 	my $FirstDir;
 	my $SecondDir;
 	if ($Compilation)
@@ -1402,7 +1402,7 @@ sub GetNewDirName
 	{
 		$SecondDir = GetNameOfLength([ $SecondDir ],'',undef);
 	}
-	
+
 	if($DirInsensitive)
 	{
 		($FirstDir,$SecondDir) = GetNewDirName_insensitive($FirstDir,$SecondDir,$BaseDir);
@@ -1581,7 +1581,7 @@ sub RenameFile
 	my $OrigFile = shift;
 	my $NewFile = shift;
 	my $BaseDir = shift;
-	
+
 	# Get some prettier names to display
 	my $OutputOldName = $OrigFile;
 	my $OutputNewName = $NewFile;
@@ -1606,10 +1606,10 @@ sub RenameFile
 		return;
 	}
 	# Create the dir
-	eval { 
+	eval {
 		intMkpath(dirname($NewFile));
 		1;
-	} 
+	}
 		or do
 	{
 		FatalError('Failed to create path' . dirname($NewFile) . ": $@\nWas processing $OrigFile");
@@ -2335,7 +2335,7 @@ GetOptions (
 	'a|allowspecial' => \$AllowSpecialChars,
 	'debuginfo' => \&debugInfo,
 	'c|compilation' => sub { $CompilationDetection = {} },
-	'e|cache' => sub { 
+	'e|cache' => sub {
 		warn('--cache is deprecated, caching is now enabled by default'."\n");
 		$cacheFile = true;
 	},
