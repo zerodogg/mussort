@@ -48,7 +48,7 @@ use constant {
 	DUPE_KEEP => 3,
 };
 
-our $VERSION = '0.4';
+our $VERSION = '0.5';
 
 # Hash of which information sources we have
 my %Has = (
@@ -99,6 +99,8 @@ my $readFromCache = true;
 my $addAllCleanTree = false;
 # Bool, true if we just output what will be done, don't actually do anything
 my $DryRunMove;
+# Bool, true if we're currently working on a degraded (ie. DOS-style) FS
+my $DegradedFS = false;
 
 # This makes sure the children are slayed properly
 $SIG{CHLD} = sub {
@@ -1192,6 +1194,37 @@ sub writeCache
 	}
 }
 
+# Purpose: Finalize a set of file or dirnames
+#	Will filter away characters that are not permitted, and limit the filename
+#	length as needed.
+# Usage: name = FinalizeNames(\@names, JOINCHAR, EXT);
+# \@names is an arrayref containing the name components
+# JOINCHAR is the character to join the contents of \@names with
+# EXT is the extension (sans the .) to add, can be left undef for no extension
+sub FinalizeNames
+{
+	# The names arrayref
+	my $names     = shift;
+	# The join character
+	my $joiner    = shift;
+	# The extension, if any
+	my $extension = shift;
+
+	my @newNames;
+
+	foreach my $name (@{$names})
+	{
+		if ($DegradedFS)
+		{
+			# Filter characters
+			$name =~ s/[<>:\"\\\|\?\*]//g;
+		}
+		$name =~ s/\///g;
+		push(@newNames,$name);
+	}
+	return GetNameOfLength(\@newNames,$joiner,$extension);
+}
+
 # Purpose: Retrieve a generated filename or dirname of at most 254 characters
 # Usage: name = GetNameOfLength(\@names, JOINCHAR,EXT);
 # \@names is an arrayref containing the name components
@@ -1321,7 +1354,7 @@ sub GetNewFileName
 		unshift(@NameComponents,'CD'.$Info->{SetNo}->{number});
 	}
 
-	my $NewName = GetNameOfLength(\@NameComponents,'-',$Info->{Ext});
+	my $NewName = FinalizeNames(\@NameComponents,'-',$Info->{Ext});
 	return($NewName);
 }
 
@@ -1396,11 +1429,11 @@ sub GetNewDirName
 
 	if(defined($FirstDir) && length($FirstDir))
 	{
-		$FirstDir = GetNameOfLength([ $FirstDir ],'',undef);
+		$FirstDir = FinalizeNames([ $FirstDir ],'',undef);
 	}
 	if(defined($SecondDir) && length($SecondDir))
 	{
-		$SecondDir = GetNameOfLength([ $SecondDir ],'',undef);
+		$SecondDir = FinalizeNames([ $SecondDir ],'',undef);
 	}
 
 	if($DirInsensitive)
@@ -1875,6 +1908,22 @@ sub ProcessTree
 		FatalError($Dir.': is not a directory or is not readable');
 	}
 
+	my $testFileName = '.x-mussort-fstest-:';
+	die($Dir.'/'.$testFileName.' already exists, please remove this file') if -e $Dir.'/'.$testFileName;
+
+	# Detect a degraded FS by writing a file with a colon to it. If that fails,
+	# enable degraded mode.
+	eval
+	{
+		open(my $f,'>',$Dir.'/'.$testFileName) or die;
+		close($f) or die;
+		unlink($Dir.'/'.$testFileName);
+		$DegradedFS = false;
+		1;
+	} or do {
+		$DegradedFS = true;
+		warn "WARNING: Using degraded fileystem mode. This usually happens on DOS-style\nfilesystems. In degraded mode filenames will have additional filters applied.\n";
+	};
 
 	printv(M_STANDARD,"Processing: $Dir\n");
 	find({
@@ -2597,8 +2646,6 @@ You can safely remove this file any time if you want to (see also --cleancache).
 =head1 BUGS AND LIMITATIONS
 
 If you find a bug, please report it at L<http://random.zerodogg.org/mussort/bugs>.
-
-I<mussort> will not work on DOS filesystems, such as VFAT, because it will create files with colons (:). Unix-style filesystems, like ext*, xfs, ufs, btrfs, zfs etc. are all fully supported.
 
 =head1 INCOMPATIBILITIES
 
