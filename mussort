@@ -2315,6 +2315,95 @@ sub initDeps
 # Purpose: Main application
 sub main
 {
+
+	Getopt::Long::Configure ('bundling');
+	GetOptions (
+		'help|h' => sub {
+			print "mussort version $VERSION\n\n";
+			print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
+			PrintHelp('-h','--help','Display this help screen');
+			PrintHelp('','--version','Display version information');
+			PrintHelp('-k','--keepdupes','Keep and sort duplicates (default)');
+			PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (overrides --keepdues)');
+			PrintHelp('-n','--noremove','Never remove any files (overrides --keepdupes)');
+			PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
+			PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will avoid directory names with different casing but is also slightly slower');
+			PrintHelp('-s','--consistent','Similarly to -i, this will avoid directory names with different casing by enforcing a consistent casing for all names');
+			PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags');
+			PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
+			PrintHelp('','--silentskip','Supress messages about files skipped');
+			PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
+			PrintHelp('','--no-cache','Disable file information caching');
+			PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
+			PrintHelp('','--refresh-cache','Refresh the cache (use the cache in a write-only mode)');
+			PrintHelp('','--quiet','Suppress all non-error messages');
+			PrintHelp('','--dry-run','Output what would be done without doing it');
+			PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
+			PrintHelp('','--fileinfo','Display parsed file information for the supplied file.');
+			PrintHelp('','--debuginfo','Print various technical information related to this installation of mussort');
+			exit(0);
+		},
+		'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
+		'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
+		'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
+		'k|keepdupes' => sub { $dupeAction = DUPE_KEEP; },
+		'i|insensitive' => sub {
+			$DirInsensitive = true;
+			die("--insensitive can not be combined with --consistent\n") if $DirConsistent;
+		},
+		's|consistent' => sub {
+			$DirConsistent = true;
+			die("--consistent can not be combined with --insensitive\n") if $DirInsensitive;
+		},
+		'a|allowspecial' => \$AllowSpecialChars,
+		'debuginfo' => \&debugInfo,
+		'c|compilation' => sub { $CompilationDetection = {} },
+		'e|cache' => sub {
+			warn('--cache is deprecated, caching is now enabled by default'."\n");
+			$cacheFile = true;
+		},
+		'nocache|no-cache' => sub { $cacheFile = false },
+		'refresh-cache' => sub { $readFromCache = false },
+		'v|verbose+' => \$verbosity,
+		'dryrun' => sub { $DryRunMove = true; $cacheFile = false },
+		'dryrunmove' => sub { $DryRunMove = true },
+		'q|quiet' => sub { $verbosity = 0 },
+		'cleantree' => $addAllCleanTree,
+		'cleancache' => \&cleanCache,
+		'fileinfo=s' => sub {
+			shift; my $file = shift;
+			$file = realpath(dirname($file)).'/'.basename($file);
+			eval('use Data::Dumper qw(Dumper); $Data::Dumper::Indent = 0;');
+			initDeps();
+			if($cacheFile)
+			{
+				loadCache();
+			}
+			print "File information for $file:\n";
+			my $info = GetInfo($file);
+			foreach my $entry (keys(%{$info}))
+			{
+				my $c = $info->{$entry};
+				if(defined($c) and ref($c))
+				{
+					$c = Dumper($c);
+					$c =~ s/;\n$//;
+					$c =~ s/^\$VAR\d*\s*=\s*//;
+				}
+				if(not defined $c or not length($c))
+				{
+					$c = '(unknown)';
+				}
+				print "$entry: $c\n";
+			}
+			exit(0);
+		},
+		'version' => sub {
+			print "mussort version $VERSION\n";
+			exit(0);
+		},
+		'silentskip' => \$SilentSkip,
+	) or die('See ' . basename($0) . " --help for more information\n");
 	initDeps();
 	# This only gets printed if debug output actually IS enabled.
 	printv(M_DEBUG,"Debug output is enabled\n");
@@ -2341,95 +2430,6 @@ sub main
 	}
 	exit(0);
 }
-
-Getopt::Long::Configure ('bundling');
-GetOptions (
-	'help|h' => sub {
-		print "mussort version $VERSION\n\n";
-		print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
-		PrintHelp('-h','--help','Display this help screen');
-		PrintHelp('','--version','Display version information');
-		PrintHelp('-k','--keepdupes','Keep and sort duplicates (default)');
-		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (overrides --keepdues)');
-		PrintHelp('-n','--noremove','Never remove any files (overrides --keepdupes)');
-		PrintHelp('-a','--allowspecial','Allow special letters (accents and other non-ASCII letters)');
-		PrintHelp('-i','--insensitive','Do case insensitive searches for directory names. This will avoid directory names with different casing but is also slightly slower');
-		PrintHelp('-s','--consistent','Similarly to -i, this will avoid directory names with different casing by enforcing a consistent casing for all names');
-		PrintHelp('','--prefer-audiofile','Prefer to use Audio::File for reading tags');
-		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
-		PrintHelp('','--silentskip','Supress messages about files skipped');
-		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
-		PrintHelp('','--no-cache','Disable file information caching');
-		PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
-		PrintHelp('','--refresh-cache','Refresh the cache (use the cache in a write-only mode)');
-		PrintHelp('','--quiet','Suppress all non-error messages');
-		PrintHelp('','--dry-run','Output what would be done without doing it');
-		PrintHelp('','--cleantree','Attempt to clean up the directory tree. This has a significant performance impact. See the manpage for more information');
-		PrintHelp('','--fileinfo','Display parsed file information for the supplied file.');
-		PrintHelp('','--debuginfo','Print various technical information related to this installation of mussort');
-		exit(0);
-	},
-	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
-	'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
-	'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
-	'k|keepdupes' => sub { $dupeAction = DUPE_KEEP; },
-	'i|insensitive' => sub {
-		$DirInsensitive = true;
-		die("--insensitive can not be combined with --consistent\n") if $DirConsistent;
-	},
-	's|consistent' => sub {
-		$DirConsistent = true;
-		die("--consistent can not be combined with --insensitive\n") if $DirInsensitive;
-	},
-	'a|allowspecial' => \$AllowSpecialChars,
-	'debuginfo' => \&debugInfo,
-	'c|compilation' => sub { $CompilationDetection = {} },
-	'e|cache' => sub {
-		warn('--cache is deprecated, caching is now enabled by default'."\n");
-		$cacheFile = true;
-	},
-	'nocache|no-cache' => sub { $cacheFile = false },
-	'refresh-cache' => sub { $readFromCache = false },
-	'v|verbose+' => \$verbosity,
-	'dryrun' => sub { $DryRunMove = true; $cacheFile = false },
-	'dryrunmove' => sub { $DryRunMove = true },
-	'q|quiet' => sub { $verbosity = 0 },
-	'cleantree' => $addAllCleanTree,
-	'cleancache' => \&cleanCache,
-	'fileinfo=s' => sub {
-		shift; my $file = shift;
-		$file = realpath(dirname($file)).'/'.basename($file);
-		eval('use Data::Dumper qw(Dumper); $Data::Dumper::Indent = 0;');
-		initDeps();
-		if($cacheFile)
-		{
-			loadCache();
-		}
-		print "File information for $file:\n";
-		my $info = GetInfo($file);
-		foreach my $entry (keys(%{$info}))
-		{
-			my $c = $info->{$entry};
-			if(defined($c) and ref($c))
-			{
-				$c = Dumper($c);
-				$c =~ s/;\n$//;
-				$c =~ s/^\$VAR\d*\s*=\s*//;
-			}
-			if(not defined $c or not length($c))
-			{
-				$c = '(unknown)';
-			}
-			print "$entry: $c\n";
-		}
-		exit(0);
-	},
-	'version' => sub {
-		print "mussort version $VERSION\n";
-		exit(0);
-	},
-	'silentskip' => \$SilentSkip,
-) or die('See ' . basename($0) . " --help for more information\n");
 
 main();
 __END__
