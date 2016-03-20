@@ -147,14 +147,7 @@ sub GetOggVorbisInfo
 	$Information{TRACKNUMBER} =~ s#/.*##;
 	if ($hadInfo)
 	{
-		my %FileInfo;
-		$FileInfo{Title} = getTag(\%Information,'title');
-		$FileInfo{Band} = getTag(\%Information,'artist');
-		$FileInfo{Album} = getTag(\%Information,'album');
-		$FileInfo{Track} = getTag(\%Information,'track');
-		$FileInfo{SetNo} = getTag(\%Information,'setNo');
-		$FileInfo{Ext} = 'ogg';
-		return %FileInfo;
+		return getTagsFromList('ogg',\%Information);
 	}
 	return;
 }
@@ -182,14 +175,7 @@ sub GetMP3Info
 
 	if ($hadInfo)
 	{
-		my %FileInfo;
-		$FileInfo{Title} = getTag($Information,'title');
-		$FileInfo{Band} = getTag($Information,'artist');
-		$FileInfo{Album} = getTag($Information,'album');
-		$FileInfo{Track} = getTag($Information,'track');
-		$FileInfo{SetNo} = getTag($Information,'setNo');
-		$FileInfo{Ext} = 'mp3';
-		return(%FileInfo);
+		return getTagsFromList('mp3',$Information);
 	}
 	return;
 }
@@ -229,14 +215,7 @@ sub GetFLACInfo
 	$Information{TRACKNUMBER} =~ s#/.*##;
 	if ($hadInfo)
 	{
-		my %FileInfo;
-		$FileInfo{Title} = getTag(\%Information,'title');
-		$FileInfo{Band} = getTag(\%Information,'artist');
-		$FileInfo{Album} = getTag(\%Information,'album');
-		$FileInfo{Track} = getTag(\%Information,'track');
-		$FileInfo{SetNo} = getTag(\%Information,'setNo');
-		$FileInfo{Ext} = 'flac';
-		return %FileInfo;
+		return getTagsFromList('flac',\%Information);
 	}
 	return;
 }
@@ -404,14 +383,7 @@ sub GetInfoFromVorbisHeader
 	};
 	if ($hadInfo)
 	{
-		my %FileInfo;
-		$FileInfo{Title} = getTag(\%Information,'title');
-		$FileInfo{Band} = getTag(\%Information,'artist');
-		$FileInfo{Album} = getTag(\%Information,'album');
-		$FileInfo{Track} = getTag(\%Information,'track');
-		$FileInfo{SetNo} = getTag(\%Information,'setNo');
-		$FileInfo{Ext} = 'ogg';
-		return %FileInfo;
+		return getTagsFromList('ogg',\%Information);
 	}
 	return;
 }
@@ -748,6 +720,27 @@ sub getTag
 		}
 	}
 	return $content;
+}
+
+# Pupose: getTag() wrapper that has a predefined list
+# Usage: %FileInfo = getTagsFromList(EXT, $information)
+sub getTagsFromList
+{
+	my ($ext,$information) = @_;
+	my %InfoList = (
+		Title => 'title',
+		Band => 'artist',
+		Album => 'album',
+		Track => 'track',
+		SetNo => 'setNo',
+	);
+	my %FileInfo;
+	$FileInfo{Ext} = $ext;
+	foreach my $tag (keys %InfoList)
+	{
+		$FileInfo{$tag} = getTag($information,$InfoList{$tag});
+	}
+	return %FileInfo;
 }
 
 # Purpose: Strip stuff we don't want in file/dir names
