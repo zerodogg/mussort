@@ -24,6 +24,7 @@ use File::Find;
 use File::Basename qw(dirname basename);
 use File::Path qw(rmtree);
 use File::Copy;
+use File::stat;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
@@ -825,8 +826,7 @@ sub setTermTitle
 sub mtime
 {
 	my $file = shift;
-	my $mtime;
-	(undef,undef,undef,undef,undef,undef,undef,undef,undef,$mtime,undef,undef,undef) = stat($file);
+	my $mtime = stat($file)->mtime;
 	if(not defined $mtime)
 	{
 		printv(M_DEBUG,'Failed to read mtime from file '.$file."\n");
