@@ -1687,7 +1687,7 @@ sub RenameFile
 	}
 	# Output info and do the actual renaming
 	printv(M_STANDARD,"Rename: $OutputOldName -> $OutputNewName\n");
-	unless(defined $DryRunMove)
+	if(!defined $DryRunMove)
 	{
 		move($OrigFile,$NewFile) or FatalError("Unable to move $OrigFile to $NewFile: $!");
 		foreach my $fname (qw(folder cover))
