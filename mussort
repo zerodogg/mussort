@@ -508,28 +508,22 @@ sub GetInfo
 
 		if ($File =~ /ogg$/i)
 		{
-			if ($Has{'Ogg::Vorbis::Header'})
+			foreach my $attempt (qw(Ogg::Vorbis::Header Ogg::Vorbis::Header::PurePerl ogginfo))
 			{
-				push(@try,'Ogg::Vorbis::Header');
-			}
-			if ($Has{'Ogg::Vorbis::Header::PurePerl'})
-			{
-				push(@try,'Ogg::Vorbis::Header::PurePerl');
-			}
-			if ($Has{'ogginfo'})
-			{
-				push(@try,'ogg');
+				if ($Has{$attempt})
+				{
+					push(@try,$attempt);
+				}
 			}
 		}
 		elsif($File =~ /mp3$/i)
 		{
-			if ($Has{'id3v2'})
+			foreach my $attempt (qw(id3v2 id3info))
 			{
-				push(@try,'id3v2');
-			}
-			if ($Has{'id3info'})
-			{
-				push(@try,'id3info');
+				if ($Has{$attempt})
+				{
+					push(@try,$attempt);
+				}
 			}
 		}
 		elsif($File =~ /flac$/)
@@ -584,7 +578,7 @@ sub GetInfo
 			{
 				%FileInfo = GetMP3Info($File);
 			}
-			elsif($t eq 'ogg')
+			elsif($t eq 'ogginfo')
 			{
 				%FileInfo = GetOggVorbisInfo($File);
 			}
