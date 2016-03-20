@@ -4,6 +4,7 @@
 
 ## Dependencies
 
+- `Try::Tiny` (perl module)
 - For OGG vorbis support, one or more of: `Ogg::Vorbis::Header::PurePerl` (perl module), `Ogg::Vorbis::Header` (perl module), `Audio::File` (perl module) or `ogginfo`
 - For MP3 (ID3) support, one or more of: `id3v2`, `id3info`, `Audio::File` (perl module)
 - For FLAC support, one or more of: `metaflac`, `Audio::File` (perl module)

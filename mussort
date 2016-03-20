@@ -25,6 +25,7 @@ use File::Basename qw(dirname basename);
 use File::Path qw(rmtree);
 use File::Copy;
 use File::stat;
+use Try::Tiny;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
@@ -337,7 +338,8 @@ sub GetInfoFromVorbisHeader
 	my %FileInfo;
 	my %Information;
 	my $hadInfo      = false;
-	eval {
+	try
+	{
 		local *STDERR;
 		# Ogg::Vorbis::Header(::PurePerl) outputs junk to STDERR we don't want,
 		# so temporarily redirect it to the black hole
@@ -369,9 +371,10 @@ sub GetInfoFromVorbisHeader
 				$hadInfo = true;
 			}
 		}
-		1;
-	} or do {
-		my $err = $@;
+	}
+	catch
+	{
+		my $err = $_;
 		if ($Has{'ogginfo'} || $Has{'Audio::File'})
 		{
 			printv(M_DEBUG,"Ogg::Vorbis::Header::PurePerl crashed on $File: $err\n");
@@ -411,20 +414,19 @@ sub GetInfoFromAudioFile
 	{
 		FatalError("Unknown filetype: $File\n");
 	}
-	eval {
+	try {
 		local *STDERR;
 		# Audio::File outputs junk to STDERR we don't want, so temporarily redirect it
 		# to the black hole
 		open(STDERR,'>','/dev/null');
 
 		my $af = Audio::File->new($File);
-		eval { $FileInfo{Title} = CleanTag($af->tag->title) };
-		eval { $FileInfo{Band} = CleanTag($af->tag->artist) };
-		eval { $FileInfo{Album} = CleanTag($af->tag->album) };
-		eval { $FileInfo{Track} = CleanTag($af->tag->track) };
-		1;
-	} or do {
-		my $err = $@;
+		try { $FileInfo{Title} = CleanTag($af->tag->title) };
+		try { $FileInfo{Band} = CleanTag($af->tag->artist) };
+		try { $FileInfo{Album} = CleanTag($af->tag->album) };
+		try { $FileInfo{Track} = CleanTag($af->tag->track) };
+	} catch {
+		my $err = $_;
 		printv(M_DEBUG,"Audio::File crashed on $File: $err\n");
 		if (
 			$FileInfo{Ext} eq 'mp3' and
@@ -1036,7 +1038,7 @@ sub addToCache
 		$cachedInfo{mtime}->{$file} = $fileinfo;
 		if ($cacheAdditions > 200)
 		{
-			eval
+			try
 			{
 				writeCache();
 			};
@@ -1631,13 +1633,12 @@ sub RenameFile
 		return;
 	}
 	# Create the dir
-	eval {
+	try {
 		intMkpath(dirname($NewFile));
-		1;
 	}
-		or do
+	catch
 	{
-		FatalError('Failed to create path' . dirname($NewFile) . ": $@\nWas processing $OrigFile");
+		FatalError('Failed to create path' . dirname($NewFile) . ": $_\nWas processing $OrigFile");
 	};
 	# Check if the file already exists
 	if(-e $NewFile)
@@ -1905,14 +1906,13 @@ sub ProcessTree
 
 	# Detect a degraded FS by writing a file with a colon to it. If that fails,
 	# enable degraded mode.
-	eval
+	try
 	{
 		open(my $f,'>',$Dir.'/'.$testFileName) or die;
 		close($f) or die;
 		unlink($Dir.'/'.$testFileName);
 		$DegradedFS = false;
-		1;
-	} or do {
+	} catch {
 		$DegradedFS = true;
 		warn "WARNING: Using degraded fileystem mode. This usually happens on DOS-style\nfilesystems. In degraded mode filenames will have additional filters applied.\n";
 	};
@@ -2013,7 +2013,7 @@ sub debugInfo
 	{
 		$oggPerlVer = $Ogg::Vorbis::Header::VERSION;
 		# ::Header whines if we don't call Inline::init()
-		eval { Inline::init(); };
+		try { Inline::init(); };
 	}
 	if(tryuse('Audio::File'))
 	{
@@ -2278,7 +2278,7 @@ sub initDeps
 		$Has{'Ogg::Vorbis::Header'} = true;
 
 		# ::Header won't work properly if we don't call Inline::init()
-		eval { Inline::init(); };
+		try { Inline::init(); };
 	}
 	if(tryuse('Audio::File'))
 	{
