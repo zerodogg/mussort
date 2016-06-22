@@ -882,7 +882,7 @@ sub depError
 	my $install = shift;
 	my $recommended = shift;
 	my $debPackages = {
-			id3info => 'libid3-dev',
+			id3info => 'libid3-tools',
 			id3v2 => 'id3v2',
 			ogginfo => 'vorbis-tools',
 			'Audio::File' => 'libaudio-file-perl',
