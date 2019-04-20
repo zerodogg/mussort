@@ -27,6 +27,8 @@ use File::Copy;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
+#use POSIX qw(ceil); keep for later
+use Pod::Usage;
 use Storable;
 use constant {
 	true => 1,
@@ -667,12 +669,15 @@ sub GetInfo
 		addToCache($File,\%FileInfo);
 	}
 
-	if ($CompilationDetection and defined $FileInfo{Album} and defined $FileInfo{Band})
+	if ($CompilationDetection and defined $FileInfo{Album})
 	{
+#		if(not defined $CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})})
 		if(not defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
 		{
+#			$CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})} = [];
 			$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}} = [];
 		}
+#		push(@{$CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})}},$File);
 		push(@{$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}}},$File);
 	}
 
@@ -1192,7 +1197,15 @@ sub writeCache
 			printv($doneLevel,'done'."\n");
 		}
 	}
-}
+}	
+#
+## Purpose: Get the log on base 10
+## Usage: my $log10 = log10(number);
+#sub log10
+#{
+#	my $n = shift;
+#	return log($n)/log(10);
+#}
 
 # Purpose: Finalize a set of file or dirnames
 #	Will filter away characters that are not permitted, and limit the filename
@@ -1325,6 +1338,7 @@ sub GetNewFileName
 {
 	my $Info = shift;
 	my $Compilation = shift;
+#	my $MaxNum = shift;
 	if (IsInvalidTagValue($Info->{Title}) or IsInvalidTagValue($Info->{Band}))
 	{
 		return;
@@ -1333,10 +1347,16 @@ sub GetNewFileName
 	push(@NameComponents, $Info->{Band},$Info->{Title});
 	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/)
 	{
-		if(not $Info->{Track} =~ /\d\d/)
-		{
-			$Info->{Track} = "0$Info->{Track}";
-		}
+#		if(defined $MaxNum){
+#			$Info->{Track} = sprintf("%0". POSIX::ceil(log10($MaxNum))."s",$Info->{Track});
+#		}
+#		else
+#		{
+			if(not $Info->{Track} =~ /\d\d/)
+			{
+				$Info->{Track} = "0$Info->{Track}";
+			}
+#		}
 		# Disallow 00/0
 		if($Info->{Track} > 0 )
 		{
@@ -1777,10 +1797,12 @@ sub ProcessFile
 # Usage: my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,Compilation?);
 sub getNewFilePath
 {
+#	my($File,$BaseDir,$Compilation,$MaxNum) = @_;
 	my($File,$BaseDir,$Compilation) = @_;
 	# Get info
 	my $FileInfo = GetInfo($File);
 	# Build a new filename for the music file
+#	my $NewName = GetNewFileName($FileInfo,$Compilation,$MaxNum);
 	my $NewName = GetNewFileName($FileInfo,$Compilation);
 	my $NewDir = GetNewDirName($FileInfo,$BaseDir,$Compilation);
 	if(not defined($NewName))
@@ -1837,9 +1859,11 @@ sub ProcessCompilation
 				}
 			}
 		}
+#		printv(M_VERBOSE, "Found ".scalar(@files)." files in album ".$album."\n");
 		push(@compilationRename,{
 				files => \@files,
 				album => $album,
+#				count => scalar(@files),
 			});
 	}
 
@@ -1852,6 +1876,7 @@ sub ProcessCompilation
 		foreach my $File (@{$compilation})
 		{
 			# Build a new filename for the music file
+#			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true,$compilationRef->{count});
 			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
 			next if not defined $NewDir or not defined $NewName;
 			RenameFile($File,$NewDir.'/'.$NewName,$BaseDir);
@@ -2348,6 +2373,7 @@ GetOptions (
 		print "mussort version $VERSION\n\n";
 		print 'Usage: ' . basename($0) . " [OPTIONS] dir1 dir2 ..\n";
 		PrintHelp('-h','--help','Display this help screen');
+		PrintHelp('','--man','Display the manpage and exit');
 		PrintHelp('','--version','Display version information');
 		PrintHelp('-k','--keepdupes','Keep and sort duplicates (default)');
 		PrintHelp('-l','--largest','When hitting two files with identical names leave the largest file in place and remove the smallest (overrides --keepdues)');
@@ -2359,6 +2385,8 @@ GetOptions (
 		PrintHelp('-c','--compilation','Enable compilation detection (see the manpage)');
 		PrintHelp('','--silentskip','Supress messages about files skipped');
 		PrintHelp('-v','--verbose','Increase verbosity. Supply it twice to increase it further');
+		PrintHelp('','--dryrunmove', 'does not actually move the files, but still updates the cache');
+		PrintHelp('','--dryrun', 'don\'t move the files and don\'t use the cache. Same as --dryrunmove and --no-cache');
 		PrintHelp('','--no-cache','Disable file information caching');
 		PrintHelp('','--cleancache','Go through the cache and clean up dangling or obsolete data');
 		PrintHelp('','--refresh-cache','Refresh the cache (use the cache in a write-only mode)');
@@ -2369,6 +2397,7 @@ GetOptions (
 		PrintHelp('','--debuginfo','Print various technical information related to this installation of mussort');
 		exit(0);
 	},
+	'man' => sub { pod2usage(-exitval => 0, -verbose => 2 ); },
 	'prefer-audiofile|preferaudiofile' => \$PreferAudioFile,
 	'n|noremove' => sub { $dupeAction = DUPE_NOREMOVE; },
 	'l|largest' => sub { $dupeAction = DUPE_REPLACE; },
@@ -2469,6 +2498,10 @@ up subsequent invocations significantly
 
 Display a short help screen and exit
 
+=item B<--man>
+
+Display the manpage and exit
+
 =item B<--version>
 
 Display version information and exit
@@ -2529,7 +2562,8 @@ without moving them first, sorting them in an internal data structure, then it
 will attempt to detect compilation albums and re-sort members of the
 compilation albums before finally moving files on-disk. Compilation albums
 are placed into a directory tree matching I<ALBUM/FILENAME> instead of
-I<ARTIST/ALBUM/FILENAME>.
+I<ARTIST/ALBUM/FILENAME>. The I<ARTIST/ALBUM/FILENAME> detection is done case 
+sensitive.
 
 Note that this mode is a bit slower than normal mode, and it will take a bit
 longer before any actual changes are done. This is because it needs to search
@@ -2550,6 +2584,21 @@ mode, as --compilation won't output anything until after all files have been rea
 
 If supplied twice, it will also output information about which file is currently
 being read.
+
+=item B<--dryrunmove>
+
+Don't do any file move, or deletion. Just display what will happen.
+
+The cache file are updated anyway, so if you don't want to have cache update, 
+please use I<--dryrun>
+
+Useful in case you like to see what would be the result of the options, but don't 
+actually do it.
+
+
+=item B<--dryrun>
+
+Combines I<--dryrunmove> and I<--no-cache>
 
 =item B<--quiet>
 
