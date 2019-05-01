@@ -27,6 +27,7 @@ use File::Copy;
 use Getopt::Long;
 use IPC::Open2;
 use Cwd qw(realpath);
+use POSIX qw(ceil);
 use Storable;
 use constant {
 	true => 1,
@@ -667,13 +668,13 @@ sub GetInfo
 		addToCache($File,\%FileInfo);
 	}
 
-	if ($CompilationDetection and defined $FileInfo{Album} and defined $FileInfo{Band})
+	if ($CompilationDetection and defined $FileInfo{Album})
 	{
-		if(not defined $CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}})
+		if(not defined $CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})})
 		{
-			$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}} = [];
+			$CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})} = [];
 		}
-		push(@{$CompilationDetection->{album}->{$FileInfo{Album}}->{$FileInfo{Band}}},$File);
+		push(@{$CompilationDetection->{album}->{lc($FileInfo{Album})}->{lc($FileInfo{Band})}},$File);
 	}
 
 	# If we couldn't extract a track then try to extract it from the filename instead
@@ -1192,6 +1193,14 @@ sub writeCache
 			printv($doneLevel,'done'."\n");
 		}
 	}
+}	
+	
+# Purpose: Get the log on base 10
+# Usage: my $log10 = log10(number);
+sub log10
+{
+	my $n = shift;
+	return log($n)/log(10);
 }
 
 # Purpose: Finalize a set of file or dirnames
@@ -1325,6 +1334,7 @@ sub GetNewFileName
 {
 	my $Info = shift;
 	my $Compilation = shift;
+	my $MaxNum = shift;
 	if (IsInvalidTagValue($Info->{Title}) or IsInvalidTagValue($Info->{Band}))
 	{
 		return;
@@ -1333,9 +1343,15 @@ sub GetNewFileName
 	push(@NameComponents, $Info->{Band},$Info->{Title});
 	if(not $Info->{Track} eq 'Unknown' and not $Info->{Track} =~ /\D/)
 	{
-		if(not $Info->{Track} =~ /\d\d/)
+		if(defined $MaxNum){
+			$Info->{Track} = sprintf("%0". POSIX::ceil(log10($MaxNum))."s",$Info->{Track});
+		}
+		else
 		{
-			$Info->{Track} = "0$Info->{Track}";
+			if(not $Info->{Track} =~ /\d\d/)
+			{
+				$Info->{Track} = "0$Info->{Track}";
+			}
 		}
 		# Disallow 00/0
 		if($Info->{Track} > 0 )
@@ -1777,11 +1793,11 @@ sub ProcessFile
 # Usage: my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,Compilation?);
 sub getNewFilePath
 {
-	my($File,$BaseDir,$Compilation) = @_;
+	my($File,$BaseDir,$Compilation,$MaxNum) = @_;
 	# Get info
 	my $FileInfo = GetInfo($File);
 	# Build a new filename for the music file
-	my $NewName = GetNewFileName($FileInfo,$Compilation);
+	my $NewName = GetNewFileName($FileInfo,$Compilation,$MaxNum);
 	my $NewDir = GetNewDirName($FileInfo,$BaseDir,$Compilation);
 	if(not defined($NewName))
 	{
@@ -1837,9 +1853,11 @@ sub ProcessCompilation
 				}
 			}
 		}
+		printv(M_VERBOSE, "Found ".scalar(@files)." files in album ".$album."\n");
 		push(@compilationRename,{
 				files => \@files,
 				album => $album,
+				count => scalar(@files),
 			});
 	}
 
@@ -1852,7 +1870,7 @@ sub ProcessCompilation
 		foreach my $File (@{$compilation})
 		{
 			# Build a new filename for the music file
-			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true);
+			my($NewName,$NewDir) = getNewFilePath($File,$BaseDir,true,$compilationRef->{count});
 			next if not defined $NewDir or not defined $NewName;
 			RenameFile($File,$NewDir.'/'.$NewName,$BaseDir);
 		}
